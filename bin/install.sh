@@ -1,5 +1,5 @@
 #!/bin/sh
-# PsionNet — copy config into place. Requires sudo. Reversible via uninstall.sh.
+# PsionNet, copy config into place. Requires sudo. Reversible via uninstall.sh.
 set -e
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
 SRC=$(cd "$(dirname "$0")/.." && pwd)

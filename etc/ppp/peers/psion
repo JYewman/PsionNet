@@ -1,4 +1,4 @@
-# PsionNet — PPP link to a Psion Series 7 over the serial cable.
+# PsionNet, PPP link to a Psion Series 7 over the serial cable.
 # Invoke with:  sudo pppd call psion
 #
 # The serial device. Whatever is written here is overridden when a device is

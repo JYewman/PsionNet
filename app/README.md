@@ -6,13 +6,13 @@ One window for both halves of PsionNet: the PPP link and the downgrading proxy.
 
 Anything running **EPOC Release 5**: the **Series 5mx**, **Series 7**,
 **netBook** and **Revo**/Revo Plus. ER5 ships the same TCP/IP and PPP stack
-across all of them, and the same "Web 2" browser — in ROM on the Series 7, as
+across all of them, and the same "Web 2" browser, in ROM on the Series 7 and
 a separate install elsewhere. Eric Lindsay's EPOC pages put it plainly:
 "Epoc Release 5 (Psion5mx, Revo and all other models) provides Web 2 ... (it
 is in ROM on the Series 7)."
 
-That means the proxy's HTML 3.2 output — derived by reading the Series 7 ROM's
-own parser tables — applies unchanged to the other ER5 machines.
+That means the proxy's HTML 3.2 output, derived by reading the Series 7 ROM's
+own parser tables, applies unchanged to the other ER5 machines.
 
 The **Series 5 classic is not ER5**; it runs EPOC Release 3, a different OS
 release with a different connectivity story. It may well work, but nothing
@@ -23,7 +23,7 @@ The Psion-side settings are documented for the Series 7 in the main
 reached as **Remote link** rather than **Link to desktop**, and the browser
 may need installing from the PsiWin CD rather than being present in ROM.
 
-**Double-click `PsionNet.app`.** That is the whole of it — no terminal, no
+**Double-click `PsionNet.app`.** That is the whole of it: no terminal, no
 install step, no preflight. Drag it to /Applications if you like; it keeps
 working.
 
@@ -38,7 +38,7 @@ Or run the GUI straight from source with `python3 app/gui.py`.
 ### How the bundle works
 
 Built with PyInstaller, which bundles the interpreter, the stdlib, Tk and
-every dependency. **57 MB, and it runs on a Mac with no Python installed** —
+every dependency. **57 MB, and it runs on a Mac with no Python installed.**
 verified by launching it in a stripped environment with nothing but
 `/usr/bin:/bin` on `PATH`.
 
@@ -75,14 +75,14 @@ for terminal use, but nothing requires them.
 
 ## What it does
 
-- **Serial port** — lists every `/dev/cu.*`, marks the one that looks like a USB
+- **Serial port**: lists every `/dev/cu.*`, marks the one that looks like a USB
   serial adapter, and shows which process is holding it. If Reconnect has the
   port, it says so and offers to quit it.
-- **Connection** — starts and stops `pppd`, shows the negotiation stage
+- **Connection**: starts and stops `pppd`, shows the negotiation stage
   (LCP → IPCP → up), the assigned addresses, and live throughput.
-- **Web proxy** — starts and stops the proxy, shows its address, requests
+- **Web proxy**: starts and stops the proxy, shows its address, requests
   served, errors and in-flight count. Detail level and images are switchable.
-- **Logs** — the pppd log and the proxy's own output, in tabs.
+- **Logs**: the pppd log and the proxy's own output, in tabs.
 
 ## Privilege
 
@@ -90,7 +90,7 @@ for terminal use, but nothing requires them.
 only the pppd invocation is elevated, through the standard macOS
 authorisation dialog.
 
-Nothing persistent is installed — no `sudoers` entry, no LaunchDaemon, no
+Nothing persistent is installed: no `sudoers` entry, no LaunchDaemon, no
 setuid helper. The cost is a password prompt when starting or stopping the
 link. If that becomes annoying, a `/etc/sudoers.d` rule scoped to just `pppd`
 and `pfctl` would remove it, at the price of standing root access for those

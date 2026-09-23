@@ -224,8 +224,7 @@ class App(ttk.Frame):
         else:
             for port in self.ports:
                 port.busy_by = previous.get(port.device, "")
-        labels = [f"{p.name}  —  {p.label.split('  ')[-1] if False else p.device}"
-                  for p in self.ports]
+        labels = [f"{p.name}  —  {p.device}" for p in self.ports]
         self.port_menu["values"] = labels
         if not self.ports:
             self.port_var.set("")
@@ -375,7 +374,7 @@ class App(ttk.Frame):
             self.link_icon.configure(image=self.icon("disconnected"))
             self.link_state.configure(text="Waiting for the Psion", foreground=WARN)
             self.link_detail.configure(
-                text=f"{link.stage} — open Web on the Psion to connect")
+                text=f"{link.stage}, open Web on the Psion to connect")
             self.link_btn.configure(text="Disconnect")
         else:
             self.link_icon.configure(image=self.icon("disconnected"))

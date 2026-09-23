@@ -1,4 +1,4 @@
-# PsionNet — source-NAT the Psion's PPP address out of the Mac's uplink.
+# PsionNet, source-NAT the Psion's PPP address out of the Mac's uplink.
 # Loaded into a CHILD anchor under Apple's existing com.apple/* hooks, so it
 # never touches /etc/pf.conf or Apple's own anchors.
 

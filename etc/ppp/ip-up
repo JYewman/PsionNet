@@ -1,5 +1,5 @@
 #!/bin/sh
-# PsionNet — runs as root when ppp0 comes up. pppd gives it an EMPTY
+# PsionNet, runs as root when ppp0 comes up. pppd gives it an EMPTY
 # environment with stdio on /dev/null, so: absolute paths, log via logger.
 # args: $1 iface  $2 tty  $3 speed  $4 local-IP  $5 remote-IP  $6 ipparam
 #

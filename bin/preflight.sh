@@ -1,5 +1,5 @@
 #!/bin/sh
-# PsionNet preflight — read-only. Changes nothing.
+# PsionNet preflight, read-only. Changes nothing.
 # Pick the first USB serial adapter, or set DEV=/dev/cu.yourdevice to override.
 DEV=${DEV:-$(ls /dev/cu.* 2>/dev/null \
   | grep -viE 'bluetooth|debug-console' \
@@ -9,11 +9,11 @@ DEV=${DEV:-$(ls /dev/cu.* 2>/dev/null \
 [ -n "$DEV" ] || { echo "No serial port found. Plug in the adapter and retry."; exit 1; }
 echo "Using serial port: $DEV"
 echo "== kernel PPP =="
-kmutil showloaded 2>/dev/null | grep -i 'nke.ppp' || echo "  !! com.apple.nke.ppp NOT loaded — serial PPP cannot work"
+kmutil showloaded 2>/dev/null | grep -i 'nke.ppp' || echo "  !! com.apple.nke.ppp NOT loaded, serial PPP cannot work"
 echo
 echo "== pppd =="
 [ -x /usr/sbin/pppd ] && echo "  /usr/sbin/pppd present" || echo "  !! missing"
-[ -f /etc/ppp/options ] && echo "  /etc/ppp/options present" || echo "  !! /etc/ppp/options missing — pppd will refuse to start (install.sh creates it)"
+[ -f /etc/ppp/options ] && echo "  /etc/ppp/options present" || echo "  !! /etc/ppp/options missing, pppd will refuse to start (install.sh creates it)"
 echo
 echo "== serial port =="
 if lsof "$DEV" 2>/dev/null | grep -q .; then
@@ -31,7 +31,7 @@ IF=$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')
 echo "  default route via: ${IF:-none}"
 [ "$IF" != "en0" ] && echo "     -> uplink is not en0; edit 'uplink' in etc/pf.anchors/psion.nat"
 route -n get default 2>/dev/null | awk '/interface:/{print $2}' | grep -q utun && \
-  echo "     !! default route is a VPN tunnel — the NAT rule will not match"
+  echo "     !! default route is a VPN tunnel, the NAT rule will not match"
 echo "  ip forwarding: $(sysctl -n net.inet.ip.forwarding)"
 echo
 echo "== installed? =="

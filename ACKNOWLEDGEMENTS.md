@@ -13,12 +13,12 @@ endorsed by any of them.
 
 ## Reconnect
 
-    Reconnect — Psion connectivity for macOS
+    Reconnect: Psion connectivity for macOS
     Copyright (C) 2024-2026 Jason Morley
     https://github.com/inseven/reconnect
     GNU General Public License, version 2 or later
 
-Reconnect is also the reason this project exists — it is what first got a
+Reconnect is also the reason this project exists. It is what first got a
 Psion talking to a modern Mac.
 
 ### Unmodified copies of files from Reconnect
@@ -35,15 +35,15 @@ A PNG cannot carry that itself, so it is recorded here. Each of the following
 recolours Jason Morley's drawing of a Psion Series 5. No outline, shape or
 detail has been altered.
 
-* `app/icons/psionnet_{32,64,512}.png` — derived in 2026 from Reconnect's
+* `app/icons/psionnet_{32,64,512}.png`, derived in 2026 from Reconnect's
   application icon by rotating every hue, orange to blue, so the two
   applications are distinguishable in the Dock. Geometry unchanged.
-* `app/icons/psion_tinted.png`, `app/icons/word_tinted.png` — derived in 2026
+* `app/icons/psion_tinted.png`, `app/icons/word_tinted.png`, derived in 2026
   by tinting the greyscale template images. Geometry and alpha unchanged.
-* `proxy/psionproxy/assets/psionnet_{32,48,64}.gif` — derived in 2026 from
+* `proxy/psionproxy/assets/psionnet_{32,48,64}.gif`, derived in 2026 from
   `psionnet_512.png` by resampling and conversion to non-interlaced GIF87a,
   for the pages served to the Psion.
-* `build_icon/PsionNet.icns` (build output, not checked in) — generated from
+* `build_icon/PsionNet.icns` (build output, not checked in), generated from
   `psionnet_512.png` by `bin/build-app.sh`.
 
 The vector source for the drawing is in Reconnect's repository.
@@ -69,7 +69,7 @@ tables. Documentation and measurements also draw on:
 
 ## Python dependencies
 
-Not vendored — installed from `proxy/requirements.txt`, or bundled into
+Not vendored. They are installed from `proxy/requirements.txt`, or bundled into
 `PsionNet.app` by PyInstaller. Each carries its own licence.
 
 | Package | Licence |
