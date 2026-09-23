@@ -1,0 +1,13 @@
+#!/bin/sh
+# PsionNet — runs as root when ppp0 comes up. pppd gives it an EMPTY
+# environment with stdio on /dev/null, so: absolute paths, log via logger.
+# args: $1 iface  $2 tty  $3 speed  $4 local-IP  $5 remote-IP  $6 ipparam
+#
+# /etc/ppp/ip-up is GLOBAL: pppd runs it as root for every PPP session on
+# the machine, a VPN included. Without this guard we would enable IP
+# forwarding and load NAT rules for links that have nothing to do with us.
+[ "$6" = psionnet ] || exit 0
+/usr/sbin/sysctl -w net.inet.ip.forwarding=1 >/dev/null 2>&1
+/sbin/pfctl -a com.apple/psion.nat -f /etc/pf.anchors/psion.nat 2>&1 | /usr/bin/logger -t psion-ppp
+/sbin/pfctl -E 2>&1 | /usr/bin/logger -t psion-ppp
+exit 0

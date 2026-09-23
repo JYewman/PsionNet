@@ -1,0 +1,16 @@
+# PsionNet — source-NAT the Psion's PPP address out of the Mac's uplink.
+# Loaded into a CHILD anchor under Apple's existing com.apple/* hooks, so it
+# never touches /etc/pf.conf or Apple's own anchors.
+
+uplink    = "en0"          # the Mac's internet-facing interface.
+                           # Check yours with: route -n get default
+psion_if  = "ppp0"
+psion_net = "10.0.2.0/30"
+
+# Uncomment if you drop the PPP MTU below 1500 and large responses stall:
+# scrub on $psion_if all no-df random-id max-mss 536
+
+nat on $uplink inet from $psion_net to any -> ($uplink)
+
+pass in  quick on $psion_if inet from $psion_net to any keep state
+pass out quick on $uplink   inet from $psion_net to any keep state

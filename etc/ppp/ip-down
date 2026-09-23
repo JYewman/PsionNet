@@ -1,0 +1,8 @@
+#!/bin/sh
+# PsionNet -- undo what ip-up did, when the link goes away.
+# Same global-hook caveat as ip-up: only act on our own link.
+# args: $1 iface  $2 tty  $3 speed  $4 local-IP  $5 remote-IP  $6 ipparam
+[ "$6" = psionnet ] || exit 0
+/sbin/pfctl -a com.apple/psion.nat -F all 2>&1 | /usr/bin/logger -t psion-ppp
+/usr/sbin/sysctl -w net.inet.ip.forwarding=0 >/dev/null 2>&1
+exit 0

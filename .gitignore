@@ -1,0 +1,19 @@
+# Build artefacts
+PsionNet.app/
+build/
+dist/
+build_icon/PsionNet.icns
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# macOS
+.DS_Store
+._*
+
+# Local runtime output
+*.log

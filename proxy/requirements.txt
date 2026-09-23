@@ -1,0 +1,11 @@
+# Everything here except httpx is ALREADY installed on this Mac -- the proxy
+# runs with zero installs. httpx is strongly recommended anyway: measured
+# against lite.duckduckgo.com, requests was blocked 3/3 and httpx(http2) got
+# through 3/3 with an identical User-Agent.
+flask>=3.1
+requests>=2.32
+beautifulsoup4>=4.14
+pillow>=12.0
+
+# Optional but recommended:
+httpx[http2]>=0.28

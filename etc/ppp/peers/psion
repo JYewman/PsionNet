@@ -1,0 +1,43 @@
+# PsionNet — PPP link to a Psion Series 7 over the serial cable.
+# Invoke with:  sudo pppd call psion
+#
+# The serial device. Whatever is written here is overridden when a device is
+# passed on the command line (`pppd call psion /dev/cu.yourdevice`), which is
+# how the GUI selects a port -- pppd registers the device option without
+# OPT_PRIO, so setdevname overwrites it unconditionally.
+#
+# Note: one adapter can publish two nodes when two drivers match it. Only one
+# of them can actually acquire the hardware. bin/preflight.sh reports which
+# ports exist and what is holding them.
+/dev/cu.usbserial
+115200
+
+# Mac : Psion
+10.0.2.1:10.0.2.2
+
+# Handed to the Psion over IPCP. Requires "Get DNS address from server"
+# ticked on the Psion's Internet service > Addresses page.
+ms-dns 1.1.1.1
+ms-dns 9.9.9.9
+
+noauth          # the Psion is the only thing that can reach this cable
+passive         # send one LCP Configure-Request, then wait for the Psion
+local           # ignore DCD: the Psion cable leaves DB9 pin 1 unconnected
+nodetach        # stay in the foreground so Ctrl-C tears the link down
+nodefaultroute  # never route the Mac's own traffic down a 115200 baud pipe
+ipparam psionnet # tags this link so /etc/ppp/ip-up can ignore other PPP sessions
+crtscts         # RTS/CTS are wired through (Honda 7 / Honda 2) - see README
+asyncmap 0      # clean 8-bit path, nothing needs escaping
+# 1500 confirmed correct: with MTU 576 the link got SLOWER, and a ping-size
+# sweep measured 10,590 B/s with 0% loss, matching the link's theoretical
+# rate. The serial layer is healthy; do not blame it.
+mtu 1500
+mru 1500
+lcp-echo-interval 30
+lcp-echo-failure 4
+debug
+logfile /var/log/ppp-psion.log
+
+# Deliberately absent:
+#   lock      - wants /var/spool/lock, which does not exist on macOS 26
+#   proxyarp  - pointless behind NAT, and unreliable on Wi-Fi anyway
