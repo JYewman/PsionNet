@@ -111,8 +111,16 @@ def _html_response(markup: str, status: int = 200) -> Response:
     # EPOC needs the CP1252/ISO-8859-1 intersection; CE renders UTF-8, so
     # encode it as such rather than destroying every non-Latin-1 character.
     body = encode(markup) if prof.downgrade_text else markup.encode("utf-8", "replace")
+    # Cache-Control is an HTTP/1.1 header and these replies are deliberately
+    # HTTP/1.0 (see config.PIN_HTTP10), so on its own it is advisory at best.
+    # Pocket IE on CE 4.2 ignored it outright and kept serving a cached
+    # http://psion/ after the proxy had been restarted with new content, which
+    # looks exactly like the proxy not having changed. Pragma and a past
+    # Expires are the HTTP/1.0 mechanisms, so send all three.
     return _respond(body, f"text/html; charset={prof.charset}", status,
-                    {"Cache-Control": "no-store"})
+                    {"Cache-Control": "no-store, no-cache, must-revalidate",
+                     "Pragma": "no-cache",
+                     "Expires": "Thu, 01 Jan 1970 00:00:00 GMT"})
 
 
 def _raw_url() -> str:
