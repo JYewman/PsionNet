@@ -14,6 +14,7 @@ import re
 from bs4 import BeautifulSoup, Tag
 
 from .sanitize import horizontalize_menus, sanitize, serialize, serialize_contents
+from .sanitize import settle_css, drop_dead_css_hooks
 from . import config
 
 # Containers whose class/id names betray boilerplate. Checked BEFORE the
@@ -177,6 +178,8 @@ def extract(html: str, base: str, fidelity: str = "", profile=None) -> tuple[str
             sanitize(article, base, profile)
             horizontalize_menus(article)
             collapse_divs(article)
+            settle_css(article, profile)
+            drop_dead_css_hooks(article, profile)
             return serialize_contents(article), True
         sanitize(soup, base, profile)
         horizontalize_menus(soup)
@@ -189,7 +192,13 @@ def extract(html: str, base: str, fidelity: str = "", profile=None) -> tuple[str
     if config.RELATIVISE_URLS:
         relativise(soup, base)
 
+    # Order matters. settle_css() must run before <body> is selected, so head
+    # blocks are relocated into it rather than silently dropped, and
+    # drop_dead_css_hooks() must run after, so it judges class names against
+    # the CSS that will actually be sent.
+    settle_css(soup, profile)
     body = soup.body or soup
+    drop_dead_css_hooks(body, profile)
     rendered = serialize_contents(body) if getattr(body, "name", None) else serialize(soup)
     if len(rendered.strip()) < 200:
         # Nothing survived -- fall back to a link index rather than a blank page.

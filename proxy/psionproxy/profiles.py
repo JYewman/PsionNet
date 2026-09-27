@@ -32,6 +32,7 @@ class Profile:
     strict_html32: bool       # restrict to the ROM's element/attribute tables
     doctype: str
     budget_html_hard: int
+    budget_css: int = 0       # bytes of filtered CSS worth carrying
 
 
 EPOC = Profile(
@@ -43,6 +44,7 @@ EPOC = Profile(
     strict_html32=True,
     doctype='<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">',
     budget_html_hard=64_000,
+    budget_css=0,             # no CSS engine in the ROM at all
 )
 
 CE = Profile(
@@ -53,9 +55,12 @@ CE = Profile(
     keep_css=True,
     strict_html32=False,
     doctype='<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">',
-    # The CE link runs at 19200 (~1.9 KB/s), a fifth of the Series 7's, so the
-    # budget is smaller in bytes even though the device is more capable.
-    budget_html_hard=32_000,
+    # The CE link runs at 19200, about 1.9 KB/s, a fifth of the Series 7's.
+    # These are deliberately generous: a fuller page is worth the wait on this
+    # device, and the two passes that matter (dead class removal and CSS
+    # filtering) cut far more than the budget ever has to.
+    budget_html_hard=192_000,      # ~100 s of link time
+    budget_css=48_000,             # ~25 s, after filter_for_ie6 has run
 )
 
 ALL = {p.key: p for p in (EPOC, CE)}

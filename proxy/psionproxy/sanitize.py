@@ -215,7 +215,10 @@ def _clean_attrs(tag: Tag, base: str, profile=None) -> None:
     allowed = ATTR_OK
     if profile.keep_css:
         # Everything except event handlers and framework noise. CSS renders on
-        # this client, so class/id/style earn their bytes.
+        # this client, so style= is kept. class= and id= are kept only
+        # provisionally here; drop_dead_css_hooks() removes the ones no
+        # retained rule or fragment link actually uses, which on BBC News is
+        # all of them and half the page.
         allowed = None
     for key in list(tag.attrs):
         low = key.lower()
@@ -348,15 +351,23 @@ def sanitize(soup: BeautifulSoup, base: str = "", profile=None) -> BeautifulSoup
     # would otherwise sail straight through.
     root_name = getattr(soup, "name", None)
     if root_name and root_name not in ("[document]", "html", "body"):
-        if root_name in RENAME:
+        if root_name in RENAME and profile.strict_html32:
             soup.name = RENAME[root_name]
-        elif root_name not in ALLOWED:
+        elif profile.strict_html32 and root_name not in ALLOWED:
             soup.name = "div"
-        _clean_attrs(soup, base)
+        _clean_attrs(soup, base, profile)
+
+    drop_dead_links(soup)
 
     for node in soup.find_all(string=True):
+        parent = node.parent.name if node.parent else ""
+        if parent in ("style", "script"):
+            # Not prose. Collapsing whitespace here would corrupt rules, and
+            # replacing the node would swap bs4's Stylesheet object for a plain
+            # string, after which the tag's get_text() returns nothing.
+            continue
         raw = str(node)
-        text = raw if node.parent and node.parent.name == "pre" else _WS.sub(" ", raw)
+        text = raw if parent == "pre" else _WS.sub(" ", raw)
         # Only flatten to the CP1252/ISO-8859-1 intersection where the client
         # needs it. Windows CE renders UTF-8, and downgrading would replace
         # every curly quote and dash for no reason.
@@ -365,6 +376,133 @@ def sanitize(soup: BeautifulSoup, base: str = "", profile=None) -> BeautifulSoup
 
 
 _FACTORY = BeautifulSoup("", "html.parser")
+
+
+
+
+def style_text(tag) -> str:
+    """The CSS inside a <style> tag, whatever bs4 typed its contents as.
+
+    Tag.get_text() only returns strings of the tag's "interesting" type, which
+    for <style> is bs4's Stylesheet subclass. Any pass that rebuilt the node as
+    a plain NavigableString therefore makes get_text() silently return "", and
+    a caller reading it concludes the page has no CSS.
+    """
+    return "".join(str(c) for c in tag.contents)
+
+
+def settle_css(soup, profile=None) -> int:
+    """Consolidate the page's CSS into one affordable, renderable block.
+
+    Returns the bytes of CSS kept.
+
+    Three problems are solved in one pass:
+
+    Head blocks would be lost. extract() serialises <body> alone, so a rule in
+    <head> never reaches the device while the class attributes it styled do,
+    leaving them as dead weight.
+
+    Modern CSS is mostly un-renderable here. Pocket IE is an IE6-era engine.
+    css.filter_for_ie6() keeps the subset it implements; on BBC News that is
+    17% of the stylesheet, on the Guardian 5%.
+
+    Even the survivors must fit. The CE link runs at 19200 baud, about
+    1.9 KB/s, so the remainder is capped by profile.budget_css.
+
+    The result is written back as a single <style> block at the top of the
+    body, which is also what lets drop_dead_css_hooks() tell live class names
+    from dead ones.
+    """
+    from . import profiles
+    from .css import filter_for_ie6
+    profile = profile or profiles.DEFAULT
+    if not profile.keep_css:
+        return 0
+
+    blocks = soup.find_all("style")
+    if not blocks:
+        return 0
+    raw = "\n".join(style_text(b) for b in blocks)
+    for b in blocks:
+        b.decompose()
+
+    kept = filter_for_ie6(raw, budget=getattr(profile, "budget_css", 0))
+    if not kept:
+        return 0
+
+    body = soup.body if hasattr(soup, "body") else None
+    holder = body if body is not None else soup
+    tag = _FACTORY.new_tag("style")
+    tag.string = kept
+    holder.insert(0, tag)
+    return len(kept)
+
+
+def drop_dead_css_hooks(soup, profile=None) -> None:
+    """Remove class/id attributes that no retained rule or link refers to.
+
+    Only meaningful for a keep_css profile. Keeping class= is worth its bytes
+    exactly when some stylesheet selects on it, and after external stylesheets
+    are dropped that is a much smaller set than the page ships. Measured on the
+    CE profile before this pass:
+
+        BBC News    66,369 B of class= attributes, 50% of the page,
+                    0 of 319 distinct names referenced by any retained rule
+        Wikipedia    8,898 B, 17 of 159 names referenced
+        Hacker News  4,144 B, 0 of 11 names referenced
+
+    Those bytes are not free: the page is then shed to the byte budget, so
+    dead attribute strings were displacing real content on the slowest link
+    of the two devices.
+
+    An id is kept if a rule selects it or if a same-page fragment link targets
+    it, since dropping the latter breaks in-page navigation.
+    """
+    from . import profiles
+    profile = profile or profiles.DEFAULT
+    if not profile.keep_css:
+        return          # strict profiles have already dropped these entirely
+
+    css = " ".join(style_text(t) for t in soup.find_all("style"))
+    live_classes = set(re.findall(r"\.(-?[A-Za-z_][\w-]*)", css))
+    live_ids = set(re.findall(r"#(-?[A-Za-z_][\w-]*)", css))
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if href.startswith("#") and len(href) > 1:
+            live_ids.add(href[1:])
+
+    for tag in soup.find_all(class_=True):
+        names = tag.get("class") or []
+        if isinstance(names, str):
+            names = names.split()
+        kept = [c for c in names if c in live_classes]
+        if kept:
+            tag["class"] = kept
+        else:
+            del tag["class"]
+
+    for tag in soup.find_all(id=True):
+        if tag.get("id") not in live_ids:
+            del tag["id"]
+
+
+def drop_dead_links(soup) -> None:
+    """Drop <link> tags that cost bytes and render nothing.
+
+    Two separate cases, both measured:
+
+    Not a stylesheet at all. A Wikipedia article carries eight <link> tags and
+    none is CSS: seven are mw:PageProp/Category metadata and one is a
+    TemplateStyles marker, about 640 B that no browser paints.
+
+    Actually a stylesheet. Dropped too, deliberately. External CSS is a
+    blocking fetch of tens to hundreds of KB, and the CE link runs at 19200
+    baud, roughly 1.9 KB/s. A 100 KB stylesheet is just under a minute of
+    staring at a blank screen. Inline <style> blocks, which arrive with the
+    page and cost nothing extra, are kept instead.
+    """
+    for tag in soup.find_all("link"):
+        tag.decompose()
 
 
 def horizontalize_menus(soup) -> None:
@@ -393,10 +531,30 @@ def horizontalize_menus(soup) -> None:
                 lst.replace_with(p)
 
 
+def current_profile():
+    """The asking device's profile, or the strict default outside a request.
+
+    The proxy's own pages (home, search, errors) are rendered through render()
+    from a dozen call sites. Rather than thread a profile argument through all
+    of them, pick it up from the live request here. Falls back to the strict
+    EPOC default when there is no request context at all, which is what the
+    offline unit tests run in.
+    """
+    from . import profiles
+    try:
+        from flask import g, has_request_context
+        if has_request_context():
+            prof = getattr(g, "_profile", None)
+            if prof is not None:
+                return prof
+    except Exception:
+        pass
+    return profiles.DEFAULT
+
+
 def render(title: str, body_html: str, extra_head: str = "", profile=None) -> str:
     """Wrap a body fragment in a complete document for this client."""
-    from . import profiles
-    profile = profile or profiles.DEFAULT
+    profile = profile or current_profile()
     shown = psionise(title) if profile.downgrade_text else title
     return (
         f"{profile.doctype}\n<html><head>"

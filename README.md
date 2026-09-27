@@ -4,8 +4,13 @@ Put a **Psion** on the modern internet, from a Mac, over the serial cable.
 
 PsionNet does two things. It brings up a PPP link over RS-232 so the Psion gets
 a real IP address and routes through your Mac, and it runs a proxy that
-terminates modern TLS and rewrites pages into the HTML 3.2 subset the device's
-1999 browser can actually parse.
+terminates modern TLS and rewrites pages into something the device's browser
+can actually parse.
+
+It supports two quite different machines: the **EPOC** handhelds, whose ROM
+browser needs HTML 3.2, and the **netBook Pro**, which runs Windows CE and is
+considerably more capable. The proxy detects which is asking and shapes its
+output to suit.
 
 Both halves ship as one notarised macOS app. No terminal required.
 
@@ -13,8 +18,8 @@ Both halves ship as one notarised macOS app. No terminal required.
   <img src="docs/screenshot.png" alt="The PsionNet control panel" width="640">
 </p>
 
-> **Status:** works, and used in anger. Developed against a Series 7; the link,
-> the proxy and the app are all verified end to end on real hardware.
+> **Status:** works, and used in anger. The link, the proxy and the app are all
+> verified end to end on real hardware, on both a Series 7 and a netBook Pro.
 
 ---
 
@@ -38,6 +43,9 @@ render, so an unmodified machine browses the real internet.
 
 * A Psion running **EPOC Release 5**: Series 5mx, Series 7, netBook, or Revo.
   (The Series 5 *classic* runs ER3 and is not covered.)
+* Or a **Psion netBook Pro**, which runs Windows CE 4.2 .NET rather than EPOC.
+  It connects over the same serial cable, but as **dial-up to an emulated
+  modem** rather than a direct link. Pick it in the app's Device menu.
 * The Psion's own serial cable. It is already wired as a null modem, so no
   crossover adapter is needed.
 * A USB-to-RS-232 adapter. Anything with a working macOS driver: FTDI, PL2303,
@@ -94,11 +102,16 @@ Requests arrive as ordinary HTTP. The proxy fetches over modern TLS, then:
 * **prunes hidden markup**: `hidden`, `aria-hidden`, inline `display:none`.
   On BBC News that is 52% of the page, mostly four near-identical copies of the
   same story block shipped for different screen widths
-* **rewrites to HTML 3.2**, against element and attribute whitelists read out of
-  the Series 7 ROM's own parser tables
+* **rewrites to HTML 3.2** for EPOC, against element and attribute whitelists
+  read out of the Series 7 ROM's own parser tables. The netBook Pro gets HTML
+  4.01 and keeps its stylesheets instead, because it can render them
 * **transcodes images** to non-interlaced GIF or baseline JPEG, the only two
   formats the ROM can decode
-* **downgrades text** to the byte range where CP1252 and ISO-8859-1 agree
+* **downgrades text** to the byte range where CP1252 and ISO-8859-1 agree, for
+  EPOC only. The netBook Pro reads UTF-8, so its text is left alone
+* **filters CSS to the IE6 subset** for the netBook Pro, then drops every
+  `class` no surviving rule uses. On BBC News that is 190 KB of stylesheet down
+  to 32 KB and 66 KB of dead attributes down to nothing
 * **relativises same-origin URLs**. `href`s are 26-48% of output bytes
 
 | Page | Upstream | To the Psion | Wire time |
@@ -108,21 +121,32 @@ Requests arrive as ordinary HTTP. The proxy fetches over modern TLS, then:
 | Wikipedia article | 100 KB | 24 KB | 2.3 s |
 | Hacker News | 34 KB | 19 KB | 1.8 s |
 
-Measured link throughput is **10,650 octets/s**, so roughly 100 KB per ten
-seconds.
+Measured link throughput is **10,650 octets/s** on the EPOC link, so roughly
+100 KB per ten seconds. The netBook Pro's dial-up link runs at 19200, about
+1.9 KB/s, so its pages are budgeted generously but arrive slowly: a full BBC
+News front page is about 70 seconds.
+
+Which profile you get is decided by the User-Agent. There is nothing to
+configure. See [proxy/README.md](proxy/README.md#client-profiles) for the full
+comparison and how the CE profile was measured.
 
 ## What does not work
 
 Being honest about the limits:
 
-* **Google returns nothing.** Google Search has required JavaScript since
-  January 2025. Every endpoint returns about 91 KB of script and roughly 180
-  characters of visible text. `google.com` is intercepted and a working search
-  page is served instead, backed by DuckDuckGo, Marginalia and wiby.
+* **Google returns nothing**, on either device, for two different reasons.
+  EPOC and any modern User-Agent get a JavaScript-only results page: about
+  91 KB of script and 102 characters of visible text. Windows CE is blocked by
+  name before a line of script is sent, with 2,318 bytes reading "Your browser
+  isn't supported any more". Accepting the cookie notice reaches the same
+  block, so consent is not the gate, and Pocket IE having a JScript engine
+  does not help when the page is refused outright. `google.com` is intercepted
+  and a working search page served instead, backed by DuckDuckGo, Marginalia
+  and wiby.
 * **Google will never look like Google.** Its identity is entirely CSS, and
   there is no CSS engine. Pages render as structured documents, not designs.
 * **Forms work; POST does not.** Search boxes submit as GET.
-* **No JavaScript**, ever.
+* **No JavaScript**, ever, on either device.
 * Some sites refuse proxied requests outright and are short-circuited rather
   than left to time out.
 

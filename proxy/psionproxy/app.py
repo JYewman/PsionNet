@@ -130,6 +130,9 @@ def _raw_url() -> str:
 def _guard():
     import time
     g._t0 = time.time()
+    # Resolve the device profile up front. render() reads it off g, and the
+    # proxy's own pages are rendered before _html_response ever runs.
+    _client_profile()
     _log(f"START {request.method} {_raw_url()[:130]}")
     if request.method == "CONNECT":
         return _respond(b"This proxy does not tunnel TLS.\n", "text/plain", 501)
@@ -153,14 +156,16 @@ def proxy(path):
     if path.startswith("i/") or parts.path.startswith("/i/"):
         return _serve_image(parts)
 
-    # google.com is intercepted, not proxied: it requires JavaScript and
-    # returns no results in HTML to any client. See pages.google_substitute.
+    # google.com is intercepted, not proxied. It yields no results to either
+    # device, for two different reasons: a JavaScript-only results page for
+    # EPOC, and an outright User-Agent block for Windows CE. Both measured;
+    # see pages.google_substitute.
     if host in ("google.com", "encrypted.google.com") or host.startswith("www.google."):
         q = parse_qs(parts.query).get("q", [""])[0]
         if q:
             results, backend = search(q)
-            return _html_response(pages.search_results(q, results, backend))
-        return _html_response(pages.google_substitute())
+            return _html_response(pages.search_results(q, results, backend, _client_profile()))
+        return _html_response(pages.google_substitute(profile=_client_profile()))
 
     return _proxy_remote(raw, parts)
 
@@ -172,7 +177,7 @@ def _local(parts) -> Response:
         q = (query.get("q") or [""])[0]
         if route.rstrip("/") == "/search":
             results, backend = search(q)
-            return _html_response(pages.search_results(q, results, backend))
+            return _html_response(pages.search_results(q, results, backend, _client_profile()))
     if route.startswith("/i/"):
         return _serve_image(parts)
     if route.rstrip("/") == "/probe":
@@ -187,7 +192,7 @@ def _local(parts) -> Response:
             size = 25
         shape = bits[1] if len(bits) > 1 and bits[1] in ("prose", "nested", "table") else "prose"
         return _html_response(pages.bench(size, shape))
-    return _html_response(pages.home())
+    return _html_response(pages.home(_client_profile()))
 
 
 def _assets_dir() -> Path:

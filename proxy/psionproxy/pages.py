@@ -38,46 +38,151 @@ def _nav() -> str:
             '<a href="http://psion/search">Search</a></p><hr>')
 
 
-def home() -> str:
+# Styling for the CE home page. Deliberately within what Pocket IE actually
+# implements, which is roughly CSS1: no flex, no grid, no rem, no calc, no
+# custom properties. Sizes in px, colours as six-digit hex. This is the same
+# subset css.filter_for_ie6() keeps from real sites, so the proxy's own page
+# is built to the standard it holds everything else to.
+_CE_STYLE = """
+body{background:#ffffff;color:#1a1a1a;font-family:Tahoma,Arial,sans-serif;
+font-size:13px;line-height:1.4;margin:0;padding:12px}
+h1{font-size:19px;margin:0 0 2px 0;color:#003a6b}
+h2{font-size:15px;margin:16px 0 6px 0;padding-bottom:3px;
+border-bottom:1px solid #c8d4e0;color:#003a6b}
+.sub{color:#5a6570;font-size:11px;margin:0 0 14px 0}
+.bar{background:#eef3f8;border:1px solid #c8d4e0;padding:9px;margin:0 0 14px 0}
+.bar input.q{width:260px;font-size:13px;padding:2px}
+table.links{border-collapse:collapse;width:100%}
+table.links td{padding:3px 8px 3px 0;vertical-align:top;
+border-bottom:1px solid #eeeeee}
+td.name{width:150px;font-weight:bold}
+td.note{color:#5a6570;font-size:11px}
+a{color:#0b4f8a}
+.foot{margin-top:16px;padding-top:8px;border-top:1px solid #c8d4e0;
+color:#5a6570;font-size:11px}
+.dev{background:#f4f8e8;border:1px solid #cfdca8;padding:6px 9px;font-size:11px}
+.hit{margin:0 0 11px 0;padding-bottom:9px;border-bottom:1px solid #eeeeee}
+.hit a{font-size:14px}
+.snip{color:#333333;margin:2px 0 1px 0}
+.url{color:#3a7d3a;font-size:11px}
+"""
+
+
+def _ce_head(profile) -> str:
+    """The CE stylesheet, or nothing for a client with no cascade."""
+    return f"<style>{_CE_STYLE}</style>" if profile and profile.key == "ce" else ""
+
+
+def home(profile=None) -> str:
+    """The proxy's own front page, shaped to whichever device asked.
+
+    The EPOC page is unchanged: HTML 3.2, <font> for emphasis, no CSS,
+    because the ROM has no cascade at all. The netBook Pro gets a laid-out
+    page instead, since the capability probe showed Pocket IE renders both
+    <style> blocks and style attributes, and a plain 3.2 page sells it short.
+    """
+    from . import profiles
+    profile = profile or profiles.DEFAULT
+
+    if profile.key != "ce":
+        rows = "\n".join(
+            f'<li><a href="{plain(url)}">{psionise(name)}</a> <font size="1">{psionise(note)}</font></li>'
+            for url, name, note in LINKS)
+        body = (
+            # 1.4 KB GIF, ~140 ms of link time. GIF because the ROM has no PNG
+            # decoder at all.
+            '<p><img src="http://psion/icon/psionnet_48.gif" width="48" height="48" '
+            'alt="PsionNet"></p>'
+            "<h2>PsionNet</h2>"
+            '<form action="http://psion/search" method="get">'
+            '<p>Search: <input type="text" name="q" size="28">'
+            ' <input type="submit" value="Go"></p></form>'
+            "<hr><h3>Light pages that load quickly</h3>"
+            f"<ul>{rows}</ul>"
+            '<hr><p><font size="1"><a href="http://psion/bench/25/prose">'
+            "Render benchmark</a> - times this Psion's own layout engine.</font></p>"
+            "<p><font size=\"1\">Type any address into Web as normal. "
+            "The proxy fetches it over a secure connection and hands it back as "
+            "plain HTML 3.2. Images are off by default.</font></p>")
+        return render("PsionNet", body, profile=profile)
+
     rows = "\n".join(
-        f'<li><a href="{plain(url)}">{psionise(name)}</a> <font size="1">{psionise(note)}</font></li>'
+        f'<tr><td class="name"><a href="{plain(url)}">{name}</a></td>'
+        f'<td class="note">{note}</td></tr>'
         for url, name, note in LINKS)
     body = (
-        # 1.4 KB GIF, ~140 ms of link time. GIF because the ROM has no PNG
-        # decoder at all.
-        '<p><img src="http://psion/icon/psionnet_48.gif" width="48" height="48" '
-        'alt="PsionNet"></p>'
-        "<h2>PsionNet</h2>"
+        '<table width="100%"><tr>'
+        '<td width="56"><img src="http://psion/icon/psionnet_48.gif" '
+        'width="48" height="48" alt="PsionNet"></td>'
+        '<td><h1>PsionNet</h1>'
+        '<p class="sub">Psion netBook Pro &middot; Windows CE &middot; '
+        'Pocket Internet Explorer</p></td></tr></table>'
+        '<div class="bar">'
         '<form action="http://psion/search" method="get">'
-        '<p>Search: <input type="text" name="q" size="28">'
-        ' <input type="submit" value="Go"></p></form>'
-        "<hr><h3>Light pages that load quickly</h3>"
-        f"<ul>{rows}</ul>"
-        '<hr><p><font size="1"><a href="http://psion/bench/25/prose">'
-        "Render benchmark</a> - times this Psion's own layout engine.</font></p>"
-        "<p><font size=\"1\">Type any address into Web as normal. "
-        "The proxy fetches it over a secure connection and hands it back as "
-        "plain HTML 3.2. Images are off by default.</font></p>")
-    return render("PsionNet", body)
+        'Search the web: <input type="text" name="q" class="q"> '
+        '<input type="submit" value="Go">'
+        '</form></div>'
+        '<h2>Light pages that load quickly</h2>'
+        f'<table class="links">{rows}</table>'
+        '<h2>What this device gets</h2>'
+        '<p class="dev">You are being served the <b>Windows CE profile</b>. '
+        'Pages keep their stylesheets, their UTF-8 text and their real '
+        'HTML 4.01 structure, rather than being flattened to the HTML 3.2 '
+        'the EPOC machines need. Stylesheets are filtered down to the subset '
+        'this browser implements, so a page arrives styled instead of arriving '
+        'slowly and then ignoring most of what it carried.</p>'
+        '<p>Type any address into Internet Explorer as normal. The proxy does '
+        'the TLS upstream and hands back plain HTTP, so <tt>https</tt> sites '
+        'work without this machine ever negotiating a modern cipher.</p>'
+        '<div class="foot">'
+        '<a href="http://psion/probe">Capability probe</a> &middot; '
+        '<a href="http://psion/bench/25/prose">Render benchmark</a> &middot; '
+        'link runs at 19200 baud, about 1.9 KB/s'
+        '</div>')
+    return render("PsionNet", body, extra_head=_ce_head(profile), profile=profile)
 
 
-def search_results(query: str, results: list, backend: str) -> str:
+def search_results(query: str, results: list, backend: str,
+                   profile=None) -> str:
+    from . import profiles
+    profile = profile or profiles.DEFAULT
+    ce = profile.key == "ce"
+    shown = query if ce else psionise(query)
+
     if not results:
-        body = (_nav() + f"<h3>No results for {psionise(query)}</h3>"
+        body = (_nav() + f"<h3>No results for {shown}</h3>"
                 "<p>Every search backend either returned nothing or is rate-limiting. "
                 f'You can try <a href="http://frogfind.com/?q={quote_plus(query)}">'
                 "FrogFind</a> directly.</p>")
-        return render(f"No results: {query}", body)
+        return render(f"No results: {query}", body,
+                      extra_head=_ce_head(profile), profile=profile)
 
     rows = []
     for title, url, snippet in results:
-        snip = psionise(snippet)[:220]
-        rows.append(
-            f'<p><a href="{plain(url)}">{psionise(title)[:110]}</a><br>'
-            f'<font size="1">{snip}</font></p>')
-    body = (_nav() + f"<h3>{psionise(query)}</h3>" + "\n".join(rows) +
-            f'<hr><p><font size="1">via {psionise(backend)}</font></p>')
-    return render(f"Search: {query}", body)
+        if ce:
+            rows.append(
+                f'<div class="hit"><a href="{plain(url)}">{title[:110]}</a>'
+                f'<div class="snip">{snippet[:260]}</div>'
+                f'<div class="url">{plain(url)[:90]}</div></div>')
+        else:
+            rows.append(
+                f'<p><a href="{plain(url)}">{psionise(title)[:110]}</a><br>'
+                f'<font size="1">{psionise(snippet)[:220]}</font></p>')
+
+    if ce:
+        body = (f'<h1>{shown}</h1>'
+                f'<p class="sub">{len(results)} results via {backend}</p>'
+                '<div class="bar">'
+                '<form action="http://psion/search" method="get">'
+                f'Search: <input type="text" name="q" class="q" value="{shown}"> '
+                '<input type="submit" value="Go"></form></div>'
+                + "\n".join(rows) +
+                '<div class="foot"><a href="http://psion/">PsionNet home</a></div>')
+    else:
+        body = (_nav() + f"<h3>{shown}</h3>" + "\n".join(rows) +
+                f'<hr><p><font size="1">via {psionise(backend)}</font></p>')
+    return render(f"Search: {query}", body,
+                  extra_head=_ce_head(profile), profile=profile)
 
 
 def error(title: str, detail: str, url: str = "", retry_insecure: bool = False) -> str:
@@ -155,23 +260,52 @@ def bench(size_kb: int, shape: str = "prose") -> str:
     return render(f"Bench {size_kb}K {shape}", _nav() + header + body)
 
 
-def google_substitute(query: str = "") -> str:
-    """Served in place of google.com, which cannot work on this device.
+def google_substitute(query: str = "", profile=None) -> str:
+    """Served in place of google.com, which cannot work on either device.
 
-    Google Search has required JavaScript since 15 January 2025. Measured with
-    every User-Agent, consent cookie and legacy flag: ~91 KB of script and 180
-    characters of visible text. There is no proxy trick that recovers results.
+    Two different walls, depending on who asks, both measured rather than
+    assumed:
+
+    EPOC / any modern UA the proxy could spoof
+        ~91 KB of script, 102 characters of visible text, zero result links.
+        Google Search has required JavaScript since 15 January 2025.
+
+    Windows CE
+        Google blocks the User-Agent outright. "Mozilla/4.0 (compatible;
+        MSIE 6.0; Windows CE)" gets 2,318 bytes reading "Your browser isn't
+        supported any more", before any script runs. A desktop MSIE 6.0 UA
+        reaches a cookie consent wall instead; accepting it advances to the
+        same block, so consent is not the gate.
+
+    Worth recording, because it is the obvious next thing to try: Google's
+    script is transpiled to ES5, so Pocket IE could parse it. It would still
+    fail at runtime on Promise, Object.defineProperty, addEventListener and
+    JSON, none of which CE 4.2 has, after spending ~48 s of a 19200 link
+    fetching it. The barrier is not syntax.
 
     Deliberately NOT dressed up as Google -- no logo, no imitation. Showing
     Google's branding on a page that is not Google would misrepresent it.
     """
+    from . import profiles
+    profile = profile or profiles.DEFAULT
+    if profile.key == "ce":
+        why = ("<p>Google now refuses this browser by name. A Windows CE "
+               "request gets 2,318 bytes reading <i>&quot;Your browser isn't "
+               "supported any more&quot;</i>, and no results, before any "
+               "script runs. Accepting the cookie notice reaches the same "
+               "block, so that is not the obstacle.</p>"
+               "<p>Pocket IE having JavaScript does not help here: the page "
+               "is refused before a single line of it is sent.</p>")
+    else:
+        why = ("<p>Google Search has required JavaScript since January 2025. "
+               "It now sends about 91 KB of script and 102 characters of "
+               "text, with no results in the HTML at all, so there is nothing "
+               "for this browser to display. This is true for every address, "
+               "cookie and legacy flag, including the old <tt>gbv=1</tt> "
+               "basic-HTML mode.</p>")
     body = (_nav() +
-            "<h3>Google cannot work on the Series 7</h3>"
-            "<p>Google Search has required JavaScript since January 2025. "
-            "It now sends about 91 KB of script and 180 characters of text, "
-            "with no results in the HTML at all, so there is nothing for this "
-            "browser to display. This is true for every address, cookie and "
-            "legacy flag, including the old <tt>gbv=1</tt> basic-HTML mode.</p>"
+            f"<h3>Google cannot work on the {_short_name(profile)}</h3>"
+            + why +
             "<p>PsionNet search works instead, and uses DuckDuckGo, Marginalia "
             "and wiby:</p>"
             '<form action="http://psion/search" method="get">'
@@ -181,7 +315,12 @@ def google_substitute(query: str = "") -> str:
             '<a href="http://frogfind.com/">FrogFind</a>, '
             '<a href="http://wiby.me/">wiby</a>, '
             '<a href="http://www.mojeek.com/">Mojeek</a>.</font></p>')
-    return render("Google", body)
+    return render("Google", body, profile=profile)
+
+
+def _short_name(profile) -> str:
+    """A device name that fits in a heading."""
+    return "netBook Pro" if profile.key == "ce" else "Series 7"
 
 
 def capability_probe() -> str:

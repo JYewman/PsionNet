@@ -4,7 +4,16 @@ One window for both halves of PsionNet: the PPP link and the downgrading proxy.
 
 ## Supported devices
 
-Anything running **EPOC Release 5**: the **Series 5mx**, **Series 7**,
+Two families, picked from the **Device** menu.
+
+The **Psion netBook Pro** runs Windows CE 4.2 .NET rather than EPOC. It uses
+the same serial cable, but connects as **dial-up to an emulated modem** at
+19200 baud rather than as a direct link, so it has its own peer profile. Its
+Direct Connection mode is a dead end and is labelled as such in the menu:
+PPP negotiates fully and then carries no traffic, because DCC binds to the
+sync stack rather than TCP/IP.
+
+Everything else here is **EPOC Release 5**: the **Series 5mx**, **Series 7**,
 **netBook** and **Revo**/Revo Plus. ER5 ships the same TCP/IP and PPP stack
 across all of them, and the same "Web 2" browser, in ROM on the Series 7 and
 a separate install elsewhere. Eric Lindsay's EPOC pages put it plainly:
@@ -56,19 +65,21 @@ PyInstaller 6.22.3 supports Python 3.14; py2app does not.
 
 ### Giving it to someone else
 
-Copy the .app across. It is **ad-hoc signed, not notarised**, so Gatekeeper
-asks once on the receiving Mac:
+Copy the .app across. It is **signed with a Developer ID and notarised by
+Apple**, with the ticket stapled, so it opens on any Mac with no warning and
+no right-click dance. `bin/sign-app.sh --notarize` does the signing,
+submission and stapling.
 
-- right-click the app and choose **Open**, then **Open** again, or
-- `xattr -dr com.apple.quarantine /path/to/PsionNet.app`
-
-Notarising it properly would need a paid Apple Developer ID, which is
-disproportionate here.
+One wrinkle worth recording: `Contents/Frameworks/Tcl` and `Tk` are bare
+Mach-O binaries with no file extension, so a `*.so`/`*.dylib` glob skips them
+and notarisation comes back Invalid. The script detects Mach-O with `file`
+rather than by extension.
 
 ### First run
 
-The app installs its own PPP configuration. The first time you press
-**Connect**, it asks whether to write `/etc/ppp/peers/psion`,
+The app installs its own PPP configuration, including the peer files for both
+device families and the fake modem responder the netBook Pro dials. The first
+time you press **Connect**, it asks whether to write `/etc/ppp/peers/psion`,
 `/etc/ppp/ip-up`, `/etc/ppp/ip-down` and `/etc/pf.anchors/psion.nat`, then
 authenticates once. `bin/preflight.sh` and `bin/install.sh` are still there
 for terminal use, but nothing requires them.

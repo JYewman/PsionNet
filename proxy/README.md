@@ -1,6 +1,7 @@
 # PsionNet proxy
 
-An HTTPS-terminating, HTML-3.2-downgrading HTTP proxy for the Psion Series 7.
+An HTTPS-terminating, downgrading HTTP proxy for Psion hardware. It serves two
+quite different devices and shapes its output to whichever one is asking.
 
 ## What it does
 
@@ -41,6 +42,112 @@ absolute-URI request line, `User-Agent: EPOC32-WTL/2.0 (VGA)`, empty
 `Accept-Encoding`. It asserts the reply is HTTP/1.0, unchunked, uncompressed,
 `charset=iso-8859-1`, free of C1 bytes, free of `https://`, and free of any tag
 outside the ROM's element table.
+
+## Client profiles
+
+The proxy picks a profile from the User-Agent. There is no setting to change
+and nothing to configure on the device.
+
+| | Series 7 / 5mx / netBook / Revo | netBook Pro |
+|---|---|---|
+| OS | EPOC Release 5 | Windows CE 4.2 .NET |
+| Browser | STNC WTL 2.0, in ROM | Pocket Internet Explorer |
+| User-Agent | `EPOC32-WTL/2.0 (VGA)` | `Mozilla/4.0 (compatible; MSIE 6.0; Windows CE)` |
+| Output | HTML 3.2 | HTML 4.01 Transitional |
+| Charset | ISO-8859-1, flattened | UTF-8, untouched |
+| CSS | stripped entirely | filtered to the IE6 subset |
+| `class` / `id` | stripped | kept where a retained rule uses them |
+| Images | non-interlaced GIF, baseline JPEG | same, PNG fails on both |
+| Link speed | 115200, about 11 KB/s | 19200, about 1.9 KB/s |
+| Byte budget | 64 KB | 192 KB |
+
+An unknown User-Agent gets the EPOC profile. Strict output is valid input for
+a richer browser, so guessing that way costs fidelity; guessing the other way
+produces a page the device cannot render at all.
+
+### How the CE profile was derived
+
+The EPOC target was read out of the ROM. The CE target could not be, so a
+capability probe was written instead, served to a real netBook Pro at
+`http://psion/probe`, and the results recorded:
+
+| Test | Result | Consequence |
+|---|---|---|
+| GIF, baseline JPEG | rendered | keep transcoding |
+| PNG | **did not render** | still no PNG passthrough |
+| HTML entities | rendered | |
+| Raw UTF-8 bytes | rendered | no character flattening |
+| CSS `style=` attribute | rendered | inline styles kept |
+| CSS `<style>` block | rendered | style blocks kept |
+
+### Why the CSS is filtered rather than forwarded
+
+Pocket IE renders CSS, but it is an IE6-era engine and modern inline CSS is
+overwhelmingly things it cannot use. Measured on the live pages:
+
+| | Inline CSS | At 19200 | Feature queries | rem units | flex/grid | calc() |
+|---|---|---|---|---|---|---|
+| BBC News | 190,162 B | 100 s | 487 | 1,056 | 160 | 90 |
+| The Guardian | 844,338 B | 441 s | many | many | many | many |
+| Wikipedia | 10,182 B | 5 s | 5 | 0 | 0 | 0 |
+
+Forwarding BBC's stylesheet whole would spend a hundred seconds delivering
+rules the device discards on parse. `css.py` keeps only the subset IE6
+implements, which is also roughly the subset designed for screens this size:
+colours, fonts, borders, alignment, spacing.
+
+| | Before | After | Kept |
+|---|---|---|---|
+| BBC News | 190,162 B | 32,449 B | 17% |
+| The Guardian | 844,338 B | 41,925 B | 5% |
+| Wikipedia | 10,182 B | 5,071 B | 49% |
+
+Two things it deliberately refuses even though IE6 understands them:
+
+- **Reset rules.** `html,body,div,span,...{margin:0;padding:0}` assumes the
+  design rules that follow will put the spacing back, and most of those have
+  just been dropped as un-renderable. Keeping the reset alone leaves headings
+  and paragraphs run together, visibly worse than no stylesheet. Both BBC News
+  and the Guardian open with one.
+- **Declarations that strip default semantics** on bare element selectors:
+  `ol,ul{list-style:none}`, `a{text-decoration:none}`,
+  `h1{font-weight:normal}`. On this screen a bullet and an underline are how
+  you tell what something is. A scoped rule like `.nav ul{list-style:none}` is
+  left alone, because the author meant that one.
+
+### Dead class attributes
+
+Keeping `class` is worth its bytes exactly when some retained rule selects on
+it. After the filter runs, far fewer qualify than the page shipped. Measured
+before this pass:
+
+| | `class=` bytes | Share of page | Names referenced |
+|---|---|---|---|
+| BBC News | 66,369 B | 50% | 0 of 319 |
+| Wikipedia | 8,898 B | 16% | 17 of 159 |
+| Hacker News | 4,144 B | 16% | 0 of 11 |
+
+Those bytes are not free. The page is shed to the byte budget afterwards, so
+dead attribute strings were displacing real content on the slower of the two
+links. An `id` survives if a rule selects it or a same-page fragment link
+targets it.
+
+`<link>` tags are dropped outright. A Wikipedia article carries eight and none
+is a stylesheet: seven are category metadata and one a TemplateStyles marker,
+about 640 B that paints nothing. External stylesheets are dropped too, since a
+blocking fetch of tens of KB is not affordable at 1.9 KB/s.
+
+### Measured output, both profiles
+
+| Site | Upstream | EPOC | at 11 KB/s | CE | at 1.9 KB/s |
+|---|---|---|---|---|---|
+| BBC News | 944 KB | 39.6 KB | 3.6 s | 135.6 KB | 71 s |
+| The Guardian | 1,711 KB | 112.2 KB | 10.2 s | 192 KB (capped) | 101 s |
+| Hacker News | 35 KB | 18.9 KB | 1.7 s | 20.3 KB | 11 s |
+| gov.uk | 86 KB | 10.0 KB | 0.9 s | 10.9 KB | 6 s |
+
+The CE figures are larger and slower on purpose. That device can show the
+formatting, so it is sent.
 
 ## Why the output looks the way it does
 
@@ -159,6 +266,10 @@ skipped; wiby and Marginalia still work.
 - **Some sites are on a deny-list** (`config.DENY_HOSTS`) because they return
   403/202 to any proxy regardless of headers, or serve empty JS shells. The
   proxy fails fast rather than making you wait for a timeout.
-- **Untested against real hardware.** Every invariant above is asserted in
-  `test_wire.py` against the documented ROM behaviour, but no byte of this has
-  yet reached an actual Series 7.
+- **Google cannot work on either device**, for two different reasons. EPOC and
+  any modern User-Agent get a JavaScript-only results page: about 91 KB of
+  script and 102 characters of visible text. Windows CE is refused by name
+  before any script runs, with 2,318 bytes reading "Your browser isn't
+  supported any more". Accepting the cookie notice reaches the same block, so
+  consent is not the gate. `google.com` is intercepted and a working search
+  page served instead.
