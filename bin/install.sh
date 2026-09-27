@@ -9,14 +9,20 @@ SRC=$(cd "$(dirname "$0")/.." && pwd)
 mkdir -p /etc/ppp/peers /etc/pf.anchors
 [ -f /etc/ppp/options ] || { touch /etc/ppp/options; chmod 644 /etc/ppp/options; }
 
-for f in /etc/ppp/peers/psion /etc/ppp/ip-up /etc/ppp/ip-down /etc/pf.anchors/psion.nat; do
+for f in /etc/ppp/peers/psion /etc/ppp/peers/psion-ce /etc/ppp/peers/psion-ce-modem /etc/ppp/ip-up /etc/ppp/ip-down /etc/pf.anchors/psion.nat; do
   [ -e "$f" ] && [ ! -e "$f.psionnet-backup" ] && cp -p "$f" "$f.psionnet-backup" && echo "backed up $f"
 done
 
 install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion"      /etc/ppp/peers/psion
+# Windows CE devices (netBook Pro) need the Direct Cable Connection handshake.
+install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion-ce"   /etc/ppp/peers/psion-ce
+install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion-ce-modem" /etc/ppp/peers/psion-ce-modem
 install -m 755 -o root -g wheel "$SRC/etc/ppp/ip-up"            /etc/ppp/ip-up
 install -m 755 -o root -g wheel "$SRC/etc/ppp/ip-down"          /etc/ppp/ip-down
 install -m 644 -o root -g wheel "$SRC/etc/pf.anchors/psion.nat" /etc/pf.anchors/psion.nat
 
 pfctl -vnf /etc/pf.anchors/psion.nat >/dev/null && echo "pf ruleset parses OK"
-echo "installed. next: sudo pppd call psion"
+echo "installed."
+echo "  EPOC (Series 5mx/7/netBook/Revo):  sudo pppd call psion    /dev/cu.yourdevice"
+echo "  Windows CE, Direct Connection:     sudo pppd call psion-ce       /dev/cu.yourdevice"
+echo "  Windows CE, dial-up via modem:     sudo pppd call psion-ce-modem /dev/cu.yourdevice"

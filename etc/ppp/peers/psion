@@ -1,15 +1,17 @@
 # PsionNet, PPP link to a Psion Series 7 over the serial cable.
 # Invoke with:  sudo pppd call psion
 #
-# The serial device. Whatever is written here is overridden when a device is
-# passed on the command line (`pppd call psion /dev/cu.yourdevice`), which is
-# how the GUI selects a port -- pppd registers the device option without
-# OPT_PRIO, so setdevname overwrites it unconditionally.
+# NO device line here, deliberately. pppd rejects a device that does not exist
+# with "unrecognized option", so naming one makes this file machine-specific
+# and breaks on every other Mac. The device is always supplied on the command
+# line instead:
 #
-# Note: one adapter can publish two nodes when two drivers match it. Only one
-# of them can actually acquire the hardware. bin/preflight.sh reports which
-# ports exist and what is holding them.
-/dev/cu.usbserial
+#     sudo pppd call psion /dev/cu.yourdevice
+#
+# which is how the app passes the port you pick. pppd registers the device
+# option without OPT_PRIO, so setdevname accepts it unconditionally.
+#
+# bin/preflight.sh lists the ports that exist and what is holding them.
 115200
 
 # Mac : Psion

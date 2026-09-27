@@ -1,0 +1,36 @@
+# PsionNet -- PPP link to a Windows CE device (Psion netBook Pro).
+# Invoke with:  sudo pppd call psion-ce /dev/cu.yourdevice
+#
+# Windows CE will not start PPP over a direct serial cable until it has
+# completed Microsoft's Direct Cable Connection handshake: the device sends
+# the literal ASCII string "CLIENT" and waits for the server to answer
+# "CLIENTSERVER". Without that reply CE gives up with "you have been
+# disconnected from the remote computer you dialed", having transmitted
+# nothing but those six bytes.
+#
+# The \c on the reply is essential: it suppresses the trailing newline, and
+# CE expects exactly "CLIENTSERVER" with nothing after it.
+connect "/usr/sbin/chat -v -t 60 CLIENT CLIENTSERVER\c"
+
+115200
+10.0.2.1:10.0.2.2
+
+ms-dns 1.1.1.1
+ms-dns 9.9.9.9
+
+noauth
+local           # the Psion cable leaves DB9 pin 1 (DCD) unconnected
+nodetach
+nodefaultroute
+crtscts
+asyncmap 0
+mtu 1500
+mru 1500
+lcp-echo-interval 30
+lcp-echo-failure 4
+ipparam psionnet
+debug
+logfile /var/log/ppp-psion.log
+
+# Deliberately absent: `passive`. With the chat script we answer the device's
+# handshake and then speak first, rather than waiting for it.

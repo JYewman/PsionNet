@@ -302,7 +302,15 @@ class App(ttk.Frame):
         self.link_btn.configure(state="normal")
         if not ok:
             self.log(self.ppp_text, [f"!! {msg}"])
-            if msg != "cancelled":
+            if msg == "cancelled":
+                # Silence here looked like the button doing nothing at all.
+                self.log(self.ppp_text,
+                         ["-- authorisation was dismissed; pppd was not started"])
+                messagebox.showinfo(
+                    "Not connected",
+                    "The authorisation prompt was dismissed, so pppd did not "
+                    "start.\n\nPress Connect again and enter your password.")
+            else:
                 messagebox.showerror("Could not start", msg)
             return
         self.log(self.ppp_text, ["-- pppd started; waiting for the Psion to connect"])
@@ -405,6 +413,10 @@ class App(ttk.Frame):
         if link.up:
             bits.append("Psion: set proxy to "
                         f"{link.local_ip} port 8080")
+        hijack = probe.dns_hijacked_by_vpn()
+        if hijack:
+            bits.append(f"WARNING: DNS routes via {hijack} (VPN) - "
+                        "the device will not resolve names")
         self.status.configure(text="   ·   ".join(bits))
 
         import time

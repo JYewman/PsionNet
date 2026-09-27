@@ -170,9 +170,18 @@ def ppp_stop() -> tuple[bool, str]:
 
 
 def pppd_running() -> bool:
+    """Is pppd itself running?
+
+    The pattern MUST be anchored. `pgrep -f "pppd call psion"` matches any
+    command line containing that text, which includes the osascript helper
+    that starts and stops pppd -- so pressing Connect made this return True,
+    the button flipped to Disconnect, and every later press ran pkill instead
+    of starting anything.
+    """
     try:
-        out = subprocess.run(["/usr/bin/pgrep", "-f", "pppd call psion"],
-                             capture_output=True, text=True, timeout=4)
+        out = subprocess.run(
+            ["/usr/bin/pgrep", "-f", "^/usr/sbin/pppd call psion"],
+            capture_output=True, text=True, timeout=4)
         return out.returncode == 0 and bool(out.stdout.strip())
     except (subprocess.SubprocessError, OSError):
         return False

@@ -8,6 +8,17 @@
 # forwarding and load NAT rules for links that have nothing to do with us.
 [ "$6" = psionnet ] || exit 0
 /usr/sbin/sysctl -w net.inet.ip.forwarding=1 >/dev/null 2>&1
-/sbin/pfctl -a com.apple/psion.nat -f /etc/pf.anchors/psion.nat 2>&1 | /usr/bin/logger -t psion-ppp
+
+# Work out the CURRENT internet-facing interface rather than trusting a value
+# baked into the anchor file. It changes whenever the Mac moves between Wi-Fi,
+# a USB Ethernet adapter or a dock, and a stale name means the NAT rule never
+# matches -- the link comes up fine and nothing routes.
+UPLINK=$(/sbin/route -n get default 2>/dev/null | /usr/bin/awk '/interface:/{print $2}')
+[ -n "$UPLINK" ] || UPLINK=en0
+/usr/bin/logger -t psion-ppp "uplink is $UPLINK"
+
+/usr/bin/sed "s/^uplink[[:space:]]*=.*/uplink = \"$UPLINK\"/" \
+  /etc/pf.anchors/psion.nat \
+  | /sbin/pfctl -a com.apple/psion.nat -f - 2>&1 | /usr/bin/logger -t psion-ppp
 /sbin/pfctl -E 2>&1 | /usr/bin/logger -t psion-ppp
 exit 0

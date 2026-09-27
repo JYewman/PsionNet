@@ -227,6 +227,25 @@ def uplink_interface() -> str:
     return m.group(1) if m else ""
 
 
+def dns_hijacked_by_vpn(servers=("1.1.1.1", "9.9.9.9")) -> str:
+    """Is a VPN capturing the DNS servers we hand to the device?
+
+    A tunnel that claims 1.1.1.1 (Cloudflare WARP does, since it is their own
+    resolver) swallows the Psion's DNS queries after NAT: the pf state shows
+    NO_TRAFFIC, the device reports "cannot find server", and everything else
+    looks perfectly healthy. Worth catching explicitly -- it is invisible
+    otherwise and costs hours.
+
+    Returns the offending interface name, or "" if the is clean.
+    """
+    for server in servers:
+        out = _run(["/sbin/route", "-n", "get", server])
+        m = re.search(r"interface:\s*(\S+)", out)
+        if m and m.group(1).startswith(("utun", "ipsec", "ppp")) and m.group(1) != PPP_IFACE:
+            return m.group(1)
+    return ""
+
+
 def ppp_config_installed() -> bool:
     return os.path.exists("/etc/ppp/peers/psion")
 

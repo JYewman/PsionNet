@@ -33,6 +33,18 @@ echo "  default route via: ${IF:-none}"
 route -n get default 2>/dev/null | awk '/interface:/{print $2}' | grep -q utun && \
   echo "     !! default route is a VPN tunnel, the NAT rule will not match"
 echo "  ip forwarding: $(sysctl -n net.inet.ip.forwarding)"
+for D in 1.1.1.1 9.9.9.9; do
+  VIA=$(route -n get "$D" 2>/dev/null | awk "/interface:/{print \$2}")
+  case "$VIA" in
+    utun*|ipsec*)
+      echo "  !! DNS $D routes via $VIA (a VPN tunnel)."
+      echo "     The device's DNS queries will be swallowed after NAT and it"
+      echo "     will report 'cannot find server' while everything else looks"
+      echo "     healthy. Disconnect the VPN, or change ms-dns in the peer file"
+      echo "     to a resolver the VPN does not claim."
+      ;;
+  esac
+done
 echo
 echo "== installed? =="
 for f in /etc/ppp/peers/psion /etc/pf.anchors/psion.nat /etc/ppp/ip-up; do
