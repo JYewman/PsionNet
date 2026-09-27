@@ -1,0 +1,9 @@
+# Microsoft's Direct Cable Connection handshake, as a chat FILE.
+#
+# A file rather than an inline connect string because pppd splits that string
+# on whitespace without honouring quotes, so anything containing a space is
+# silently mangled into separate arguments.
+#
+# The long timeout lets the device be dialled at leisure after pppd starts.
+TIMEOUT 3600
+CLIENT CLIENTSERVER\c

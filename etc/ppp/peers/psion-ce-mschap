@@ -1,0 +1,41 @@
+# PsionNet -- Windows CE, Direct Connection, MS-CHAPv2 with MPPE encryption.
+# Invoke with:  sudo pppd call psion-ce-mschap /dev/cu.yourdevice
+#
+# Use this when psion-ce (PAP) authenticates successfully and the device then
+# still reports failure. Windows asks for MPPE during CCP; MPPE keys come from
+# the MS-CHAP exchange, so a PAP-authenticated link cannot be encrypted and a
+# connection configured to require encryption will refuse it.
+#
+# Device settings: COM1, 115200, 8-N-1, hardware flow control.
+# Username "psion", password "psion". Encryption may be required or optional.
+connect "/usr/sbin/chat -v -f /etc/ppp/psion-ce.chat"
+
+115200
+10.0.2.1:10.0.2.2
+
+ms-dns 1.1.1.1
+ms-dns 9.9.9.9
+ms-wins 10.0.2.1
+
+auth
+require-mschap-v2
+refuse-pap
+refuse-chap
+refuse-eap
+
+# Offer encryption rather than rejecting it. Without this the CCP exchange
+# ends in a reject, which is what a Windows client objects to.
+require-mppe-128
+mppe-stateless
+
+local
+nodetach
+nodefaultroute
+crtscts
+asyncmap 0
+mtu 1500
+mru 1500
+noacsp
+ipparam psionnet
+debug
+logfile /var/log/ppp-psion.log

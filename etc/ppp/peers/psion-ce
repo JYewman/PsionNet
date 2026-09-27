@@ -1,25 +1,45 @@
-# PsionNet -- PPP link to a Windows CE device (Psion netBook Pro).
-# Invoke with:  sudo pppd call psion-ce /dev/cu.yourdevice
+# PsionNet -- Windows CE via DIRECT CONNECTION.
 #
-# Windows CE will not start PPP over a direct serial cable until it has
-# completed Microsoft's Direct Cable Connection handshake: the device sends
-# the literal ASCII string "CLIENT" and waits for the server to answer
-# "CLIENTSERVER". Without that reply CE gives up with "you have been
-# disconnected from the remote computer you dialed", having transmitted
-# nothing but those six bytes.
+# THIS ROUTE DOES NOT WORK FOR NETWORKING. Kept for reference and so nobody
+# repeats the investigation.
 #
-# The \c on the reply is essential: it suppresses the trailing newline, and
-# CE expects exactly "CLIENTSERVER" with nothing after it.
-connect "/usr/sbin/chat -v -t 60 CLIENT CLIENTSERVER\c"
+# A Direct Connection completes PPP perfectly: LCP, optional PAP, CCP, IPCP,
+# addresses assigned, DNS accepted, and the device answers LCP echoes. Then it
+# carries no traffic at all, and the device reports "you have been
+# disconnected". Early on it also showed "No IPv4 adapter found" in ipconfig
+# while PPP was fully established.
+#
+# This was tested to exhaustion: with and without PAP, with MS-CHAPv2 (the
+# device NAKs it and demands PAP), with and without CCP, with and without
+# MPPE, with WINS offered and refused, with Apple's ACSCP disabled, at 115200
+# and at 19200, and finally with this file made byte-for-byte identical to
+# peers/psion-ce-modem -- which works -- changing only the handshake. Same
+# result every time.
+#
+# Conclusion: Microsoft's Direct Cable Connection is a DESKTOP PASSTHROUGH
+# transport. It speaks PPP, then binds the link to the sync stack rather than
+# to TCP/IP. The decision is made on the device after negotiation completes,
+# so no server-side option can influence it.
+#
+# USE peers/psion-ce-modem INSTEAD: a dial-up connection through a modem entry
+# is treated as a real network interface, and it works.
 
-115200
+connect "/usr/sbin/chat -v -f /etc/ppp/psion-ce.chat"
+
+# 19200, NOT 115200. CE's modem entry sets the line speed, and on the netBook
+# Pro it defaults to 19200 -- reading at 115200 yields a stream of e0/00 noise
+# rather than AT commands. If you can raise the speed in the device's modem
+# settings, raise this to match; 19200 is only ~1.9 KB/s.
+19200
 10.0.2.1:10.0.2.2
 
 ms-dns 1.1.1.1
 ms-dns 9.9.9.9
 
+noccp            # do not haggle over MPPE compression
+noacsp           # Apple's proprietary extension; CE cannot understand it
 noauth
-local           # the Psion cable leaves DB9 pin 1 (DCD) unconnected
+local
 nodetach
 nodefaultroute
 crtscts
@@ -31,6 +51,3 @@ lcp-echo-failure 4
 ipparam psionnet
 debug
 logfile /var/log/ppp-psion.log
-
-# Deliberately absent: `passive`. With the chat script we answer the device's
-# handshake and then speak first, rather than waiting for it.

@@ -25,7 +25,17 @@
 # string, then ATDT<number>. Two AT/OK pairs cover both cases -- chat scans the
 # stream continuously, so if only ATZ precedes the dial the second "AT" simply
 # matches the AT inside ATDT and "DT" matches immediately after it.
-connect "/usr/sbin/chat -v -t 90 AT OK AT OK DT CONNECT"
+# A small responder rather than chat(8). This is what was running when this
+# link first came up successfully, and there are three reasons to keep it:
+#
+#  - it logs every byte to /tmp/fakemodem.log, where chat -v logs only to
+#    syslog, which macOS does not capture here;
+#  - it frames replies as \r\nOK\r\n the way a real modem does, where chat
+#    sends a bare OK\r;
+#  - it answers ANY AT command rather than a fixed number of expect/send
+#    pairs, so it does not matter how many init strings the device sends.
+#    The netBook Pro sends ATZ, then ATS7=120, then ATX4, then ATDT.
+connect "/usr/bin/python3 /etc/ppp/fakemodem.py"
 
 # 19200, NOT 115200. CE's modem entry sets the line speed, and on the netBook
 # Pro it defaults to 19200 -- reading at 115200 yields a stream of e0/00 noise

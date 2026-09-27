@@ -132,7 +132,8 @@ class App(ttk.Frame):
             value=self.prefs.get("device_type", "epoc"))
         self._type_labels = {
             "Series 5mx / 7 / netBook / Revo": "epoc",
-            "netBook Pro (Windows CE)": "ce",
+            "netBook Pro (CE, dial-up)": "ce",
+            "netBook Pro (CE, direct - does not work)": "ce-direct",
         }
         self.type_box = ttk.Combobox(
             kind, state="readonly", width=32,
@@ -291,10 +292,15 @@ class App(ttk.Frame):
 
     def _type_changed(self) -> None:
         """Explain the device-side setup, which differs completely."""
-        if self.selected_type() == "ce":
+        kind = self.selected_type()
+        if kind == "ce":
             self.type_note.configure(text=(
                 "Dial-up connection via a modem on COM1, 19200. "
                 "Turn PC Connection OFF."))
+        elif kind == "ce-direct":
+            self.type_note.configure(text=(
+                "Direct Connection negotiates PPP but carries no traffic on "
+                "this device. Use the dial-up option."))
         else:
             self.type_note.configure(text=(
                 "Connection type: Direct, 115200. "

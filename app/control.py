@@ -139,7 +139,8 @@ def ppp_install() -> tuple[bool, str]:
 # drives the line as a Hayes modem at 19200 and must be answered as one.
 PROFILES = {
     "epoc": ("psion", "Psion Series 5mx / 7 / netBook / Revo (EPOC)"),
-    "ce": ("psion-ce-modem", "Psion netBook Pro (Windows CE)"),
+    "ce": ("psion-ce-modem", "Psion netBook Pro (Windows CE, dial-up)"),
+    "ce-direct": ("psion-ce", "Psion netBook Pro (Windows CE, direct)"),
 }
 
 

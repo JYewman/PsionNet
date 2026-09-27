@@ -9,7 +9,7 @@ SRC=$(cd "$(dirname "$0")/.." && pwd)
 mkdir -p /etc/ppp/peers /etc/pf.anchors
 [ -f /etc/ppp/options ] || { touch /etc/ppp/options; chmod 644 /etc/ppp/options; }
 
-for f in /etc/ppp/peers/psion /etc/ppp/peers/psion-ce /etc/ppp/peers/psion-ce-modem /etc/ppp/ip-up /etc/ppp/ip-down /etc/pf.anchors/psion.nat; do
+for f in /etc/ppp/peers/psion /etc/ppp/peers/psion-ce /etc/ppp/peers/psion-ce-modem /etc/ppp/peers/psion-ce-mschap /etc/ppp/psion-ce.chat /etc/ppp/pap-secrets /etc/ppp/chap-secrets /etc/ppp/ip-up /etc/ppp/ip-down /etc/pf.anchors/psion.nat; do
   [ -e "$f" ] && [ ! -e "$f.psionnet-backup" ] && cp -p "$f" "$f.psionnet-backup" && echo "backed up $f"
 done
 
@@ -17,6 +17,11 @@ install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion"      /etc/ppp/peers/p
 # Windows CE devices (netBook Pro) need the Direct Cable Connection handshake.
 install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion-ce"   /etc/ppp/peers/psion-ce
 install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion-ce-modem" /etc/ppp/peers/psion-ce-modem
+install -m 644 -o root -g wheel "$SRC/etc/ppp/psion-ce.chat"    /etc/ppp/psion-ce.chat
+# pap-secrets holds credentials, so it must not be world-readable.
+install -m 600 -o root -g wheel "$SRC/etc/ppp/pap-secrets"      /etc/ppp/pap-secrets
+install -m 600 -o root -g wheel "$SRC/etc/ppp/chap-secrets"     /etc/ppp/chap-secrets
+install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion-ce-mschap" /etc/ppp/peers/psion-ce-mschap
 install -m 755 -o root -g wheel "$SRC/etc/ppp/ip-up"            /etc/ppp/ip-up
 install -m 755 -o root -g wheel "$SRC/etc/ppp/ip-down"          /etc/ppp/ip-down
 install -m 644 -o root -g wheel "$SRC/etc/pf.anchors/psion.nat" /etc/pf.anchors/psion.nat
