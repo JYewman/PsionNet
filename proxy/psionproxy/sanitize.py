@@ -207,12 +207,22 @@ def _http_only(url: str) -> str:
     return u
 
 
-def _clean_attrs(tag: Tag, base: str) -> None:
+def _clean_attrs(tag: Tag, base: str, profile=None) -> None:
+    from . import profiles
+    profile = profile or profiles.DEFAULT
     if not getattr(tag, "attrs", None):
         return
+    allowed = ATTR_OK
+    if profile.keep_css:
+        # Everything except event handlers and framework noise. CSS renders on
+        # this client, so class/id/style earn their bytes.
+        allowed = None
     for key in list(tag.attrs):
         low = key.lower()
-        if low.startswith(("data-", "aria-", "on")) or low not in ATTR_OK:
+        drop = (low.startswith("on") or low.startswith("data-")
+                if allowed is None
+                else (low.startswith(("data-", "aria-", "on")) or low not in allowed))
+        if drop:
             del tag.attrs[key]
             continue
         val = tag.attrs[low]
@@ -269,9 +279,22 @@ def _resolve_image_src(tag: Tag, base: str) -> None:
         tag["src"] = urljoin(base, src) if base else src
 
 
-def sanitize(soup: BeautifulSoup, base: str = "") -> BeautifulSoup:
-    """Reduce a parsed document in place to the ER5-safe element set."""
-    for tag in soup.find_all(list(KILL)):
+def sanitize(soup: BeautifulSoup, base: str = "", profile=None) -> BeautifulSoup:
+    """Reduce a parsed document to what the client can render.
+
+    With a profile that keeps CSS (Windows CE), <style> blocks and style
+    attributes survive and the element whitelist is not applied -- that device
+    renders far more than the ER5 ROM and flattening it to HTML 3.2 would
+    throw away formatting it could have shown.
+    """
+    from . import profiles
+    profile = profile or profiles.DEFAULT
+
+    kill = set(KILL)
+    if profile.keep_css:
+        kill.discard("style")
+        kill.discard("link")
+    for tag in soup.find_all(list(kill)):
         tag.decompose()
 
     fix_forms(soup)
@@ -287,13 +310,14 @@ def sanitize(soup: BeautifulSoup, base: str = "") -> BeautifulSoup:
 
     for tag in soup.find_all(True):
         name = tag.name.lower()
-        if name in RENAME:
-            tag.name = RENAME[name]
-            name = tag.name
-        if name not in ALLOWED:
-            tag.unwrap()
-            continue
-        _clean_attrs(tag, base)
+        if profile.strict_html32:
+            if name in RENAME:
+                tag.name = RENAME[name]
+                name = tag.name
+            if name not in ALLOWED:
+                tag.unwrap()
+                continue
+        _clean_attrs(tag, base, profile)
 
     # An <a> with no href is dead weight; an <img> with no src is a broken icon.
     for tag in soup.find_all("a"):
@@ -331,10 +355,12 @@ def sanitize(soup: BeautifulSoup, base: str = "") -> BeautifulSoup:
         _clean_attrs(soup, base)
 
     for node in soup.find_all(string=True):
-        if node.parent and node.parent.name == "pre":
-            node.replace_with(NavigableString(psionise(str(node))))
-        else:
-            node.replace_with(NavigableString(psionise(_WS.sub(" ", str(node)))))
+        raw = str(node)
+        text = raw if node.parent and node.parent.name == "pre" else _WS.sub(" ", raw)
+        # Only flatten to the CP1252/ISO-8859-1 intersection where the client
+        # needs it. Windows CE renders UTF-8, and downgrading would replace
+        # every curly quote and dash for no reason.
+        node.replace_with(NavigableString(psionise(text) if profile.downgrade_text else text))
     return soup
 
 
@@ -367,12 +393,15 @@ def horizontalize_menus(soup) -> None:
                 lst.replace_with(p)
 
 
-def render(title: str, body_html: str, extra_head: str = "") -> str:
-    """Wrap a body fragment in a complete, correctly declared HTML 3.2 document."""
+def render(title: str, body_html: str, extra_head: str = "", profile=None) -> str:
+    """Wrap a body fragment in a complete document for this client."""
+    from . import profiles
+    profile = profile or profiles.DEFAULT
+    shown = psionise(title) if profile.downgrade_text else title
     return (
-        f"{DOCTYPE}\n<html><head>"
-        '<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">'
-        f"<title>{psionise(title)}</title>{extra_head}</head>\n"
+        f"{profile.doctype}\n<html><head>"
+        f'<meta http-equiv="Content-Type" content="text/html; charset={profile.charset}">'
+        f"<title>{shown}</title>{extra_head}</head>\n"
         f"<body bgcolor=\"#ffffff\" text=\"#000000\">\n{body_html}\n</body></html>\n"
     )
 

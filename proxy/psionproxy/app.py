@@ -24,6 +24,7 @@ from .fetch import FetchError, decode_body, fetch
 from .images import transcode
 from .sanitize import render, sanitize, serialize
 from .search import search
+from . import profiles
 from .shed import shed_to_budget
 from .textmap import encode
 
@@ -96,8 +97,21 @@ def _respond(body: bytes, ctype: str, status: int = 200,
     return r
 
 
+def _client_profile():
+    """Which device is asking. Cached per request."""
+    prof = getattr(g, "_profile", None)
+    if prof is None:
+        prof = profiles.for_user_agent(request.headers.get("User-Agent", ""))
+        g._profile = prof
+    return prof
+
+
 def _html_response(markup: str, status: int = 200) -> Response:
-    return _respond(encode(markup), "text/html; charset=iso-8859-1", status,
+    prof = _client_profile()
+    # EPOC needs the CP1252/ISO-8859-1 intersection; CE renders UTF-8, so
+    # encode it as such rather than destroying every non-Latin-1 character.
+    body = encode(markup) if prof.downgrade_text else markup.encode("utf-8", "replace")
+    return _respond(body, f"text/html; charset={prof.charset}", status,
                     {"Cache-Control": "no-store"})
 
 
@@ -161,6 +175,8 @@ def _local(parts) -> Response:
             return _html_response(pages.search_results(q, results, backend))
     if route.startswith("/i/"):
         return _serve_image(parts)
+    if route.rstrip("/") == "/probe":
+        return _html_response(pages.capability_probe())
     if route.startswith("/icon"):
         return _serve_asset(route.rsplit("/", 1)[-1] or "psionnet_48.gif")
     if route.startswith("/bench"):
@@ -200,7 +216,8 @@ def _serve_asset(name: str) -> Response:
     else, so the PNG the Mac app uses would produce a save dialog instead of a
     picture.
     """
-    safe = name if name.endswith(".gif") and "/" not in name and ".." not in name else ""
+    ok_ext = name.endswith((".gif", ".png", ".jpg"))
+    safe = name if ok_ext and "/" not in name and ".." not in name else ""
     path = _assets_dir() / safe if safe else None
     if path is None or not path.exists():
         return _html_response(pages.error("Not found", "No such image."), 404)
@@ -208,7 +225,9 @@ def _serve_asset(name: str) -> Response:
         blob = path.read_bytes()
     except OSError:
         return _html_response(pages.error("Not found", "No such image."), 404)
-    return _respond(blob, "image/gif", 200, {"Cache-Control": "max-age=86400"})
+    mime = ("image/png" if safe.endswith(".png")
+            else "image/jpeg" if safe.endswith(".jpg") else "image/gif")
+    return _respond(blob, mime, 200, {"Cache-Control": "max-age=86400"})
 
 
 def _serve_image(parts) -> Response:
@@ -253,14 +272,16 @@ def _proxy_remote(raw: str, parts) -> Response:
 
     if ctype_main == "text/plain":
         safe = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        return _html_response(render(final_url[:60], f"<pre>{safe[:40000]}</pre>"))
+        return _html_response(render(final_url[:60], f"<pre>{safe[:40000]}</pre>",
+                                     profile=prof))
 
-    body_html, was_article = extract(text, final_url)
+    prof = _client_profile()
+    body_html, was_article = extract(text, final_url, profile=prof)
     body_html, images = _budget_images(body_html)
     truncated = False
-    if len(encode(body_html)) > config.BUDGET_HTML_HARD:
+    if len(body_html.encode("utf-8", "replace")) > prof.budget_html_hard:
         shed_soup = BeautifulSoup(body_html, "html.parser")
-        truncated, _ = shed_to_budget(shed_soup, config.BUDGET_HTML_HARD)
+        truncated, _ = shed_to_budget(shed_soup, prof.budget_html_hard)
         body_html = serialize(shed_soup)
 
     title = _title_of(text) or final_url
@@ -269,7 +290,7 @@ def _proxy_remote(raw: str, parts) -> Response:
     tail = pages.images_row(images)
     if truncated:
         tail += '<hr><p><font size="1">[Page truncated to fit the link.]</font></p>'
-    return _html_response(render(title, nav + body_html + tail))
+    return _html_response(render(title, nav + body_html + tail, profile=prof))
 
 
 _TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)

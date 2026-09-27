@@ -144,7 +144,7 @@ def link_index(soup: BeautifulSoup, base: str) -> str:
     return "<ul>\n" + "\n".join(rows) + "\n</ul>"
 
 
-def extract(html: str, base: str, fidelity: str = "") -> tuple[str, bool]:
+def extract(html: str, base: str, fidelity: str = "", profile=None) -> tuple[str, bool]:
     """Return (body_html, was_article).
 
     Default is MEDIUM fidelity: the whole body, pruned and cleaned, with NO
@@ -158,7 +158,12 @@ def extract(html: str, base: str, fidelity: str = "") -> tuple[str, bool]:
 
     fidelity = fidelity or config.FIDELITY
     soup = BeautifulSoup(html, "html.parser")
-    for tag in soup.find_all(["script", "style", "noscript", "template"]):
+    # Keep <style> for clients that render CSS -- stripping it here would undo
+    # the profile decision before sanitize() ever sees it.
+    strip = ["script", "noscript", "template"]
+    if not (profile and profile.keep_css):
+        strip.append("style")
+    for tag in soup.find_all(strip):
         tag.decompose()
 
     prune_hidden(soup)
@@ -169,16 +174,16 @@ def extract(html: str, base: str, fidelity: str = "") -> tuple[str, bool]:
     if fidelity == "lite":
         article = find_article(soup)
         if article is not None:
-            sanitize(article, base)
+            sanitize(article, base, profile)
             horizontalize_menus(article)
             collapse_divs(article)
             return serialize_contents(article), True
-        sanitize(soup, base)
+        sanitize(soup, base, profile)
         horizontalize_menus(soup)
         return link_index(soup, base), False
 
     # medium / full: keep the whole body.
-    sanitize(soup, base)
+    sanitize(soup, base, profile)
     horizontalize_menus(soup)
     collapse_divs(soup)
     if config.RELATIVISE_URLS:

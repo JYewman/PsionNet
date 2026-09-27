@@ -182,3 +182,41 @@ def google_substitute(query: str = "") -> str:
             '<a href="http://wiby.me/">wiby</a>, '
             '<a href="http://www.mojeek.com/">Mojeek</a>.</font></p>')
     return render("Google", body)
+
+
+def capability_probe() -> str:
+    """A page that reports what the client can actually render.
+
+    Built because the EPOC target was derived by reading the Series 7 ROM,
+    and there is no equivalent certainty about Pocket Internet Explorer on
+    Windows CE. Rather than assume, ask the device: each row is numbered, so
+    a tester can simply say which numbers worked.
+    """
+    rows = [
+        ("1", "GIF image", '<img src="http://psion/icon/probe.gif" width="120" height="40" alt="[1 GIF]">'),
+        ("2", "Baseline JPEG", '<img src="http://psion/icon/probe.jpg" width="120" height="40" alt="[2 JPEG]">'),
+        ("3", "PNG image", '<img src="http://psion/icon/probe.png" width="120" height="40" alt="[3 PNG]">'),
+        ("4", "UTF-8 text", "caf&eacute; &mdash; na&iuml;ve &ldquo;quoted&rdquo; 25&deg;C"),
+        ("5", "Raw UTF-8 bytes", "caf\u00e9 \u2014 \u201cquoted\u201d \u2192 25\u00b0C"),
+        ("6", "Table", '<table border="1" cellpadding="3"><tr><td>A1</td><td>B1</td></tr>'
+                       '<tr><td>A2</td><td>B2</td></tr></table>'),
+        ("7", "Nested table", '<table border="1"><tr><td><table border="1">'
+                              '<tr><td>inner</td></tr></table></td></tr></table>'),
+        ("8", "font tag", '<font size="5" color="#b42318">big red</font>'),
+        ("9", "CSS style attribute", '<span style="color:#1a7f37;font-weight:bold">'
+                                     'green bold if CSS works</span>'),
+        ("10", "CSS style block", '<span class="probe-css">green bold if style blocks work</span>'),
+        ("11", "Form (GET)", '<form action="http://psion/" method="get">'
+                             '<input type="text" name="q" size="12" value="type"> '
+                             '<input type="submit" value="Go"></form>'),
+        ("12", "Select list", '<select name="s"><option>one</option><option>two</option></select>'),
+        ("13", "Definition list", "<dl><dt>term</dt><dd>definition</dd></dl>"),
+        ("14", "Preformatted", "<pre>  spaced   text\n  second line</pre>"),
+    ]
+    body = ['<h2>Capability probe</h2>',
+            '<p>Tell me which numbers render correctly.</p><hr>']
+    for num, label, html in rows:
+        body.append(f'<p><b>{num}. {label}</b><br>{html}</p>')
+    body.append('<hr><p><font size="1">Served by PsionNet.</font></p>')
+    head = ('<style type="text/css">.probe-css{color:#1a7f37;font-weight:bold}</style>')
+    return render("Capability probe", "\n".join(body), extra_head=head)
