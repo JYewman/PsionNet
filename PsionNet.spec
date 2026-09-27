@@ -20,11 +20,17 @@ a = Analysis(
     [str(ROOT / "app" / "main.py")],
     pathex=[str(ROOT / "app"), str(ROOT / "proxy")],
     datas=datas,
+    # Listed explicitly because several are imported lazily from inside
+    # function bodies (`from . import profiles`, `from .css import ...`) to
+    # avoid import cycles, and PyInstaller's static analysis does not see
+    # those. A module missing here builds cleanly and then fails at runtime
+    # in the frozen app only.
     hiddenimports=[
-        "psionproxy", "psionproxy.app", "psionproxy.config", "psionproxy.extract",
-        "psionproxy.fetch", "psionproxy.images", "psionproxy.pages",
-        "psionproxy.prune", "psionproxy.sanitize", "psionproxy.search",
-        "psionproxy.shed", "psionproxy.textmap",
+        "psionproxy", "psionproxy.app", "psionproxy.config", "psionproxy.css",
+        "psionproxy.extract", "psionproxy.fetch", "psionproxy.images",
+        "psionproxy.pages", "psionproxy.profiles", "psionproxy.prune",
+        "psionproxy.sanitize", "psionproxy.search", "psionproxy.shed",
+        "psionproxy.textmap",
         "gui", "control", "probe", "settings", "resources",
         "flask", "requests", "bs4", "PIL", "certifi",
         "tkinter", "tkinter.ttk", "tkinter.messagebox",
