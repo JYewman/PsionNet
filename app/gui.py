@@ -124,6 +124,30 @@ class App(ttk.Frame):
                    command=self.refresh_ports).grid(row=0, column=2, padx=(8, 0))
         self.port_note = ttk.Label(port_box, text="", foreground=MUTED)
         self.port_note.grid(row=1, column=1, columnspan=2, sticky="w", pady=(6, 0))
+
+        kind = ttk.Frame(port_box)
+        kind.grid(row=3, column=1, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Label(kind, text="Device:").grid(row=0, column=0)
+        self.device_type = tk.StringVar(
+            value=self.prefs.get("device_type", "epoc"))
+        self._type_labels = {
+            "Series 5mx / 7 / netBook / Revo": "epoc",
+            "netBook Pro (Windows CE)": "ce",
+        }
+        self.type_box = ttk.Combobox(
+            kind, state="readonly", width=32,
+            values=list(self._type_labels))
+        for label, key in self._type_labels.items():
+            if key == self.device_type.get():
+                self.type_box.set(label)
+        if not self.type_box.get():
+            self.type_box.current(0)
+        self.type_box.grid(row=0, column=1, padx=(6, 0))
+        self.type_note = ttk.Label(kind, text="", foreground=MUTED,
+                                   font=("Helvetica", 10))
+        self.type_note.grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self.type_box.bind("<<ComboboxSelected>>", lambda e: self._type_changed())
+        self._type_changed()
         self.free_btn = ttk.Button(port_box, text="Quit Reconnect to free the port",
                                    command=self.free_port)
         row += 1
@@ -262,6 +286,20 @@ class App(ttk.Frame):
         else:
             self.port_note.configure(text="Ready.", foreground=MUTED)
 
+    def selected_type(self) -> str:
+        return self._type_labels.get(self.type_box.get(), "epoc")
+
+    def _type_changed(self) -> None:
+        """Explain the device-side setup, which differs completely."""
+        if self.selected_type() == "ce":
+            self.type_note.configure(text=(
+                "Dial-up connection via a modem on COM1, 19200. "
+                "Turn PC Connection OFF."))
+        else:
+            self.type_note.configure(text=(
+                "Connection type: Direct, 115200. "
+                "Turn Link to desktop OFF."))
+
     def free_port(self) -> None:
         ok, msg = control.stop_reconnect()
         self.log(self.ppp_text, [f"-- {msg}"])
@@ -298,7 +336,7 @@ class App(ttk.Frame):
             if not ok:
                 return
         self.link_btn.configure(state="disabled")
-        ok, msg = control.ppp_start(port.device)
+        ok, msg = control.ppp_start(port.device, self.selected_type())
         self.link_btn.configure(state="normal")
         if not ok:
             self.log(self.ppp_text, [f"!! {msg}"])
@@ -431,6 +469,7 @@ class App(ttk.Frame):
         port = self.selected_port()
         self.prefs.update({
             "device": port.device if port else "",
+            "device_type": self.selected_type(),
             "fidelity": self.fidelity.get(),
             "images": bool(self.images.get()),
             "geometry": self.master.winfo_geometry(),

@@ -13,6 +13,7 @@ FILE = DIR / "settings.json"
 _DEFAULTS = {
     "device": "",
     "last_good_device": "",
+    "device_type": "epoc",
     "fidelity": "medium",
     "images": True,
     "geometry": "",

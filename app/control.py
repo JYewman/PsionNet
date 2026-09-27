@@ -134,7 +134,16 @@ def ppp_install() -> tuple[bool, str]:
     return _osascript_admin(f"/bin/sh {shlex.quote(str(ROOT / 'bin' / 'install.sh'))}")
 
 
-def ppp_start(device: str) -> tuple[bool, str]:
+# The peer file to use per device family. They are genuinely different links,
+# not a setting: EPOC speaks PPP the moment the port opens, while Windows CE
+# drives the line as a Hayes modem at 19200 and must be answered as one.
+PROFILES = {
+    "epoc": ("psion", "Psion Series 5mx / 7 / netBook / Revo (EPOC)"),
+    "ce": ("psion-ce-modem", "Psion netBook Pro (Windows CE)"),
+}
+
+
+def ppp_start(device: str, profile: str = "epoc") -> tuple[bool, str]:
     """Launch pppd detached on the chosen device.
 
     The device is appended to `pppd call psion`, which overrides the peer
@@ -153,7 +162,8 @@ def ppp_start(device: str) -> tuple[bool, str]:
     # `do shell script` waits for every inherited stdio stream to close, so a
     # backgrounded child must detach all three or the auth dialog hangs for the
     # child's whole lifetime (measured: 4.08 s vs 0.08 s on this machine).
-    cmd = (f"/usr/sbin/pppd call psion {shlex.quote(device)} "
+    peer = PROFILES.get(profile, PROFILES["epoc"])[0]
+    cmd = (f"/usr/sbin/pppd call {shlex.quote(peer)} {shlex.quote(device)} "
            f"</dev/null >/dev/null 2>&1 &")
     return _osascript_admin(cmd)
 
