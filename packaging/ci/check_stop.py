@@ -55,7 +55,9 @@ def stand_ins() -> list[str]:
     if WINDOWS:
         out = subprocess.run(
             ["powershell", "-NoProfile", "-Command",
-             f"Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*{MARK}*' }}"
+             # $PID: this query's own command line carries the mark too
+             f"Get-CimInstance Win32_Process | Where-Object {{ $_.ProcessId -ne $PID -and "
+             f"$_.CommandLine -like '*{MARK}*' }}"
              " | ForEach-Object { $_.ProcessId }"], capture_output=True, text=True).stdout
         return out.split()
     out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
