@@ -88,7 +88,10 @@ else:
 proc.wait(timeout=15)
 
 if TARGET.suffix != ".py":
-    lib = TARGET.parent / "_internal" / "bin" / ("librespot.exe" if WINDOWS else "librespot")
+    name = "librespot.exe" if WINDOWS else "librespot"
+    lib = next((p for p in (TARGET.parent / "_internal" / "bin" / name,          # Windows, Linux
+                            TARGET.parent.parent / "Frameworks" / "bin" / name)  # a Mac's .app
+                if p.exists()), TARGET.parent / "_internal" / "bin" / name)
     if lib.exists():
         r = subprocess.run([str(lib), "--version"], capture_output=True, text=True, timeout=60, **QUIET)
         said = (r.stdout + r.stderr).strip().splitlines()

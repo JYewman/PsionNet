@@ -69,8 +69,10 @@ tables. Documentation and measurements also draw on:
 
 ## Python dependencies
 
-Not vendored. They are installed from `proxy/requirements.txt`, or bundled into
-`PsionNet.app` by PyInstaller. Each carries its own licence.
+Not vendored. They are installed from `proxy/requirements.txt`, or bundled by
+PyInstaller into `PsionNet.app`, the Windows installer and the Debian package,
+together with the Python interpreter (PSF-2.0) and Tcl/Tk (BSD-style). Each
+carries its own licence.
 
 | Package | Licence |
 |---|---|
@@ -80,6 +82,8 @@ Not vendored. They are installed from `proxy/requirements.txt`, or bundled into
 | Pillow | MIT-CMU (HPND-style) |
 | certifi | MPL-2.0 |
 | httpx (optional) | BSD-3-Clause |
+| httpcore, idna; h11, h2, hpack, hyperframe, anyio, sniffio (with httpx) | BSD-3-Clause; MIT |
+| ifaddr (Windows and Linux) | MIT |
 | lameenc, which contains LAME | LGPL-3.0-or-later (LAME itself LGPL-2.0-or-later) |
 
 lameenc is loaded as a separate shared module, so it can be replaced in the
@@ -100,3 +104,15 @@ speaker. Its licence travels with it in the app, at
 `Contents/Resources/licenses/librespot/LICENSE`, beside lameenc's. It is
 statically linked with the Rust libraries it is built from, each under its own
 licence; librespot's `Cargo.lock` lists them.
+
+The Windows installer and the Debian package bundle librespot 0.8.0 compiled
+from its published source, unmodified, by this repository's workflow
+(`.github/workflows/build.yml`): with SChannel (Windows) or rustls (Linux) for
+TLS, and without the audio backends PsionNet does not use. Its licence is in
+`licenses/librespot` beside the program.
+
+## Inno Setup
+
+The Windows installer is made with [Inno Setup](https://jrsoftware.org/isinfo.php),
+Copyright (C) 1997-2026 Jordan Russell and Martijn Laan, whose licence lets the
+installers it makes be distributed freely.

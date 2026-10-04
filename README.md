@@ -1,13 +1,14 @@
 # PsionNet
 
-Put a **Psion** on the modern internet from a Mac, over the serial cable or,
-for the netBook Pro, over your network.
+Put a **Psion** on the modern internet from a Mac or a Linux PC, over the
+serial cable or, for the netBook Pro, over your network -- which a Windows PC
+can serve too.
 
 PsionNet does two things. It brings up a PPP link over RS-232 so the Psion gets
-a real IP address and routes through your Mac, and it runs a proxy that
+a real IP address and routes through your computer, and it runs a proxy that
 terminates modern TLS and rewrites pages into something the device's browser
 can actually parse. A netBook Pro with a network card needs no link at all:
-the proxy listens on the Mac's own network address instead.
+the proxy listens on the computer's own network address instead.
 
 It supports three quite different browsers: the **EPOC** handhelds' ROM
 browser, which needs HTML 3.2; the **netBook Pro** on Windows CE, with Pocket
@@ -26,7 +27,8 @@ games and fonts from the RetroTechCollection archive, which PsionNet fetches
 over the HTTPS the netBook Pro cannot speak. See
 [Software for PsionLX](#software-for-psionlx).
 
-Everything ships as one macOS app. No terminal required.
+It comes as a Mac app, a Debian package and a Windows installer, each with
+everything it needs inside. No terminal required.
 
 <p align="center">
   <img src="docs/screenshot.png" alt="The PsionNet control panel" width="640">
@@ -54,7 +56,7 @@ negotiate. It has no CSS engine, no JavaScript, no PNG decoder, no gzip, and an
 ISO-8859-1 character set. In 2026 that means essentially nothing on the public
 web will load.
 
-The proxy does the TLS on the Mac and hands the Psion plain HTTP that it can
+The proxy does the TLS on your computer and hands the Psion plain HTTP that it can
 render, so an unmodified machine browses the real internet.
 
 ## What you need
@@ -67,7 +69,7 @@ render, so an unmodified machine browses the real internet.
   It connects over the same serial cable, but as **dial-up to an emulated
   modem** rather than a direct link. Pick it in the app's Device menu.
 * Or a **netBook Pro on your network**, running Windows CE or PsionLX, with a
-  network card (wired or wireless) on the same network as the Mac. No cable.
+  network card (wired or wireless) on the same network as the computer. No cable.
 * The Psion's own serial cable. It is already wired as a null modem, so no
   crossover adapter is needed.
 * A USB-to-RS-232 adapter. Anything with a working macOS driver: FTDI, PL2303,
@@ -75,12 +77,39 @@ render, so an unmodified machine browses the real internet.
 
 **Software**
 
-* macOS 11 or later, Apple Silicon or Intel.
-* Nothing else. `PsionNet.app` bundles its own Python, Tk and dependencies.
+One of these, from the [latest release](https://github.com/JYewman/PsionNet/releases/latest).
+Each bundles its own Python, Tk and dependencies, librespot included.
+
+| Computer | Download | Serial cable | Network |
+|---|---|---|---|
+| **macOS** 11 or later, Apple Silicon or Intel | `PsionNet-1.3-macOS.zip`, signed and notarised | yes | yes |
+| **Linux**: Debian 12 or later, or Ubuntu 22.10 or later, on a 64-bit PC | `psionnet_1.3-1_amd64.deb` | yes | yes |
+| **Windows** 10 or 11, 64-bit | `PsionNet-1.3-Windows-Setup.exe` | no | yes |
+
+Windows has nothing like `pppd`, the program that runs the PPP link on macOS and
+Linux, so on Windows PsionNet serves only the netBook Pro on your network
+(Windows CE or PsionLX), with the proxy, Spotify and the software library. The
+Series 5mx, 7, netBook and Revo need the serial cable, and so a Mac or Linux.
+
+* **macOS:** unzip, and drag PsionNet to Applications.
+* **Debian and Ubuntu:** `sudo apt install ./psionnet_1.3-1_amd64.deb`, then
+  find PsionNet among your applications. For the serial cable, add yourself to
+  the groups that may use serial ports and run pppd, so that connecting asks
+  for no password: `sudo usermod -aG dialout,dip $USER`, then log out and in
+  again. Without them, PsionNet asks for your password through the system's
+  dialog. If ufw is on, allow the proxy in from your network
+  (`sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp`, and port
+  8899 udp for discovery), and the Psion out (`sudo ufw route allow in on
+  ppp0`).
+* **Windows:** run the installer. It is not signed, so SmartScreen says
+  "Windows protected your PC": choose *More info*, then *Run anyway*. The
+  installer lets PsionNet through Windows Firewall on **private** networks, so
+  your network must be set to Private (Settings > Network > the network >
+  Private), or the netBook Pro cannot reach the proxy.
 
 To run from source instead, you need Python 3.10+ with Tk, and
-`pip install -r proxy/requirements.txt`. Spotify also needs
-`brew install librespot`; the app bundles its own copy.
+`pip install -r proxy/requirements.txt`. Spotify also needs librespot
+(`brew install librespot` on a Mac).
 
 **For Spotify**
 
@@ -91,11 +120,12 @@ To run from source instead, you need Python 3.10+ with Tk, and
 
 ## Getting started
 
-1. **Open PsionNet.app.**
+1. **Open PsionNet.**
 2. Pick the serial port. The app marks the one that looks like a USB adapter
    and tells you if something else is holding it.
-3. Press **Connect**. The first time, it offers to install the PPP
-   configuration and asks for your password once.
+3. Press **Connect**. On a Mac, the first time, it offers to install the PPP
+   configuration; it asks for your password to start the link (on Linux, not
+   at all once you are in the groups dialout and dip).
 4. On the Psion:
    * System → Tools → **Link to desktop** (or **Remote link**) → set **Link =
      Off**, so the port is free.
@@ -112,17 +142,17 @@ To run from source instead, you need Python 3.10+ with Tk, and
 
 ### A netBook Pro on your network
 
-1. Join the netBook Pro to the same network as the Mac.
+1. Join the netBook Pro to the same network as the computer running PsionNet.
 2. In PsionNet, set **Device** to *netBook Pro (CE, network)* or
    *netBook Pro (PsionLX, network)*.
-3. Under **Listen on**, pick the Mac's address on that network, for example
-   `en0  192.168.1.4`. Only that network, and the Mac itself, may use the
-   proxy.
+3. Under **Listen on**, pick the computer's address on that network, for
+   example `en0  192.168.1.4` on a Mac. Only that network, and the computer
+   itself, may use the proxy.
 4. Press **Start** under Web proxy. The status line shows the address.
 5. Point the netBook Pro at it:
    * Windows CE: Internet Explorer's Internet Options → Connection → use a
      proxy server, that address, port `8080`.
-   * PsionLX: once, in Terminal (PROGRAMS → OTHER), with the Mac's address:
+   * PsionLX: once, in Terminal (PROGRAMS → OTHER), with that address:
 
          su
          wget -O - http://192.168.1.4:8080/lx/install | sh
@@ -143,8 +173,10 @@ ROM has a **Direct cable connection** modem profile and a *Connection type:
 Direct* option, so there is no modem handshake to emulate: it opens the port and
 starts LCP.
 
-The Mac NATs the link out through its own uplink with a `pf` anchor, loaded into
+A Mac NATs the link out through its own uplink with a `pf` anchor, loaded into
 a child anchor under Apple's existing hooks so `/etc/pf.conf` is never touched.
+Linux does the same with an nftables table of its own, made when the link comes
+up and deleted when it goes down.
 
 Serial `pppd` on Apple Silicon appears to be undocumented territory. No prior
 report of it working turned up anywhere. It does work.
@@ -189,7 +221,7 @@ comparison and how the CE profile was measured.
 The netBook Pro cannot talk to Spotify itself. Its newest TLS is 1.0, and no
 Spotify client was ever built for its 2005 ARM Linux. So the work is split:
 
-* **On the Mac**, PsionNet runs [librespot](https://github.com/librespot-org/librespot),
+* **On your computer**, PsionNet runs [librespot](https://github.com/librespot-org/librespot),
   an open-source Spotify Connect player, as a speaker called *netBook Pro*,
   signed in to your account. It encodes what the speaker plays as 128 kbit/s
   MP3 and streams it over plain HTTP, and it answers the app's requests for
@@ -200,7 +232,7 @@ Spotify client was ever built for its 2005 ARM Linux. So the work is split:
   image, and only while the netBook Pro is the speaker Spotify is using.
 
 Because the netBook Pro is an ordinary Connect speaker, the Spotify app on
-your phone or Mac can also send music to it.
+your phone or computer can also send music to it.
 
 ### Setting it up
 
@@ -214,7 +246,7 @@ your phone or Mac can also send music to it.
    *netBook Pro* speaker online.
 4. On the netBook Pro, install **Spotify** from **Find new software** (TASKS)
    if it is not there yet, then open it from PROGRAMS → OTHER. It finds
-   PsionNet on the network by itself; if it cannot, it asks for the Mac's
+   PsionNet on the network by itself; if it cannot, it asks for the computer's
    address.
 
 The speaker then signs in once more, on its own: the first time the proxy
@@ -228,8 +260,9 @@ controls) cannot be reused for it. Both are remembered.
 
 * The sound lags the buttons. The stream is buffered at both ends so that a
   busy network does not make it stutter.
-* The Mac does the work and must stay awake while you listen.
-* Your Spotify tokens are kept in `~/Library/Application Support/PsionNet`,
+* The computer does the work and must stay awake while you listen.
+* Your Spotify tokens are kept in `~/Library/Application Support/PsionNet` on a
+  Mac, `~/.config/psionnet` on Linux and `%APPDATA%\PsionNet` on Windows,
   readable only by you. **Log out** deletes them.
 
 ## Software for PsionLX
@@ -239,8 +272,8 @@ software to Psion's own image. Those programs, and the Spotify app, are in the
 **PsionLX-Software** folder of the RetroTechCollection archive, as packages for
 Psion's own package manager, so any PsionLX card can have them:
 
-* `http://<this Mac>:8080/lx/install` is the installer described above.
-* `http://<this Mac>:8080/lx/software/...` hands the netBook Pro files from
+* `http://<this computer>:8080/lx/install` is the installer described above.
+* `http://<this computer>:8080/lx/software/...` hands the netBook Pro files from
   <https://archive.retrotechcollection.com/PsionLX-Software>, fetched over
   HTTPS and passed on byte for byte. It serves that one folder only.
 * On the netBook Pro, **Find new software**, on the TASKS screen where Psion
@@ -306,7 +339,11 @@ librespot's own sign-in, which Spotify accepts.
 
 **Not yet tried on hardware:** browsing the web with PsionLX's Firefox through
 the proxy (its profile is tested on this Mac only), and Windows CE over the
-network (its profile is the one tested over dial-up). The hardware test ran
+network (its profile is the one tested over dial-up). The Windows and Linux
+versions have been tested by the build workflow only, not yet with a Psion:
+on Linux the serial link was tested over a pty with a second `pppd` standing in
+for the Psion, for EPOC's direct link and for Windows CE's dial-up through the
+fake modem. The hardware test ran
 PsionNet from source; the app bundle with Spotify in it has been checked only
 as a scratch build, with the stand-in.
 
@@ -314,19 +351,31 @@ as a scratch build, with the stand-in.
 
 ```sh
 python3 app/main.py              # run the GUI from source
-python3 proxy/run.py --host 127.0.0.1   # run just the proxy, test from this Mac
+python3 proxy/run.py --host 127.0.0.1   # run just the proxy, test from this computer
 
 python3 proxy/tests/test_units.py    # transforms, offline
 python3 proxy/tests/test_wire.py     # end-to-end, hits the network
 python3 proxy/tests/test_startup.py  # launches run.py for real
 python3 proxy/tests/test_network.py  # network mode, discovery, Spotify API
 
-# network mode on this Mac's LAN address, with a stand-in for Spotify
+# network mode on this computer's LAN address, with a stand-in for Spotify
 python3 proxy/run.py --host 192.168.1.4 --allow 192.168.1.0/24 --spotify-demo
 
 sh bin/build-app.sh              # build PsionNet.app with PyInstaller
 sh bin/sign-app.sh --notarize    # sign and notarise (needs your own Apple ID)
+
+# Windows and Linux: PyInstaller builds dist/PsionNet, then
+python -m PyInstaller PsionNet.spec
+iscc /DAppVersion=1.3 packaging\windows\psionnet.iss   # the Windows installer
+sh packaging/linux/build-deb.sh                        # the .deb, on Debian
 ```
+
+PyInstaller cannot build for another system, so the Windows installer and the
+Debian package are built by [a workflow](.github/workflows/build.yml) on
+GitHub's machines, which also tests them: the test suites, the built program's
+proxy and Spotify stand-in, its window, the installer installed and removed, the
+package on clean Debian 12 and 13, and the serial link end to end on Linux, over
+a pty, with a second `pppd` in a network namespace standing in for the Psion.
 
 `test_wire.py` drives the proxy with the exact bytes a Series 7 sends
 absolute-URI request line, `User-Agent: EPOC32-WTL/2.0 (VGA)`, empty
@@ -344,6 +393,17 @@ through the standard macOS authorisation dialog. Nothing persistent is
 installed: no `sudoers` entry, no `LaunchDaemon`, no setuid helper. The cost is
 a password prompt on connect and disconnect.
 
+On Linux, Debian's own `pppd` is made to be run by members of the group `dip`,
+with the root-owned peer file supplying the options that need root; the port
+needs the group `dialout`. A user in both connects with no prompt at all.
+Otherwise PsionNet asks through polkit (`pkexec`), the Linux equivalent of the
+macOS dialog. The Debian package installs `/etc/ppp/peers/psion` and
+`psion-ce-modem`, `/usr/lib/psionnet/fakemodem.py`, and two hooks,
+`/etc/ppp/ip-up.d/psionnet` and `ip-down.d/psionnet`, which turn on IP
+forwarding and NAT (nftables) for the Psion's link only, and put both back as
+they were when it ends. On Windows nothing needs privilege beyond the
+installer's firewall rule.
+
 Installing the PPP configuration writes `/etc/ppp/peers/psion`,
 `/etc/ppp/peers/psion-ce-modem`, `/etc/ppp/fakemodem.py` (the modem the
 netBook Pro dials), `/etc/ppp/ip-up`, `/etc/ppp/ip-down` and
@@ -359,9 +419,9 @@ binds the PPP address, or loopback when there is no link. **Never `0.0.0.0`.**
 It also refuses to fetch private, loopback or link-local addresses, so it
 cannot be used to reach inside the network it runs on.
 
-Network mode has to listen on the Mac's LAN address, which everything on that
-network can reach. So it binds that one address, serves only the Mac itself and
-the subnet of the interface it listens on, and refuses everything else with a
+Network mode has to listen on the computer's LAN address, which everything on
+that network can reach. So it binds that one address, serves only the computer
+itself and the subnet of the interface it listens on, and refuses everything else with a
 403; its discovery responder answers the same subnet only. Within that subnet
 it is still an open proxy, so use network mode on a network you trust, and
 stop the proxy when you are done.

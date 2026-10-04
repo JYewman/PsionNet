@@ -154,13 +154,36 @@ seconds, and the box shows it.
 
 `pppd` needs root; the proxy does not. Rather than run the whole GUI as root,
 only the pppd invocation is elevated, through the standard macOS
-authorisation dialog.
+authorisation dialog (on Linux, polkit's, or none at all: see below).
 
 Nothing persistent is installed: no `sudoers` entry, no LaunchDaemon, no
 setuid helper. The cost is a password prompt when starting or stopping the
 link. If that becomes annoying, a `/etc/sudoers.d` rule scoped to just `pppd`
 and `pfctl` would remove it, at the price of standing root access for those
 two commands.
+
+## Windows and Linux
+
+The same code runs on all three. What differs is decided in one place,
+`proxy/psionproxy/host.py`: where files live (`~/Library` on a Mac, XDG folders
+on Linux, `%APPDATA%` on Windows), what messages call the computer, and how a
+child process is started without a window of its own.
+
+* **Linux** has the serial link. Ports come from `/dev` (`ttyUSB`, `ttyACM`,
+  and `ttyS` only where a UART answers), named from `/dev/serial/by-id`; who
+  holds a port is read from `/proc`; the link's addresses through ioctls and
+  its byte counts from sysfs. `pppd` runs as the user when the user is in the
+  groups `dip` and `dialout`, as Debian intends, and otherwise through
+  `pkexec`. Its log goes to `~/.local/state/psionnet/ppp.log`, a file the user
+  owns, as `pppd` run by a user may write nowhere else.
+* **Windows** has no `pppd`, so the Device menu offers only the netBook Pro on
+  the network, and the serial port and Connect are hidden. The proxy is
+  stopped as a whole process tree (`taskkill /T`), which takes librespot with
+  it; Windows has no process groups to signal.
+
+On every system, stopping the proxy stops librespot. It runs in a session of
+its own, and before 1.3 each proxy restart left one running: a *netBook Pro*
+speaker with nothing behind it.
 
 ## Why Tkinter
 
