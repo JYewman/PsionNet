@@ -53,7 +53,7 @@ a = Analysis(
         "psionproxy.extract", "psionproxy.fetch", "psionproxy.images",
         "psionproxy.pages", "psionproxy.profiles", "psionproxy.prune",
         "psionproxy.sanitize", "psionproxy.search", "psionproxy.shed",
-        "psionproxy.textmap", "psionproxy.discovery",
+        "psionproxy.textmap", "psionproxy.discovery", "psionproxy.software",
         "psionproxy.spotify", "psionproxy.spotify.audio", "psionproxy.spotify.demo",
         "psionproxy.spotify.librespot", "psionproxy.spotify.routes",
         "psionproxy.spotify.service", "psionproxy.spotify.store",
