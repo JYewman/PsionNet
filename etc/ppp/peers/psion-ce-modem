@@ -28,7 +28,7 @@
 # A small responder rather than chat(8). This is what was running when this
 # link first came up successfully, and there are three reasons to keep it:
 #
-#  - it logs every byte to /tmp/fakemodem.log, where chat -v logs only to
+#  - it logs every byte to /var/log/psionnet-fakemodem.log, where chat -v logs only to
 #    syslog, which macOS does not capture here;
 #  - it frames replies as \r\nOK\r\n the way a real modem does, where chat
 #    sends a bare OK\r;

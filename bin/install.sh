@@ -9,25 +9,41 @@ SRC=$(cd "$(dirname "$0")/.." && pwd)
 mkdir -p /etc/ppp/peers /etc/pf.anchors
 [ -f /etc/ppp/options ] || { touch /etc/ppp/options; chmod 644 /etc/ppp/options; }
 
-for f in /etc/ppp/peers/psion /etc/ppp/peers/psion-ce /etc/ppp/peers/psion-ce-modem /etc/ppp/peers/psion-ce-mschap /etc/ppp/psion-ce.chat /etc/ppp/pap-secrets /etc/ppp/chap-secrets /etc/ppp/ip-up /etc/ppp/ip-down /etc/pf.anchors/psion.nat; do
+for f in /etc/ppp/peers/psion /etc/ppp/peers/psion-ce-modem /etc/ppp/fakemodem.py /etc/ppp/ip-up /etc/ppp/ip-down /etc/pf.anchors/psion.nat; do
   [ -e "$f" ] && [ ! -e "$f.psionnet-backup" ] && cp -p "$f" "$f.psionnet-backup" && echo "backed up $f"
 done
 
-install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion"      /etc/ppp/peers/psion
-# Windows CE devices (netBook Pro) need the Direct Cable Connection handshake.
-install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion-ce"   /etc/ppp/peers/psion-ce
+# The netBook Pro's Windows CE "Direct Connection" route was removed: it
+# negotiates PPP and then carries no traffic (see app/README.md). Take away
+# what earlier versions installed for it, but only files that are ours.
+for f in /etc/ppp/peers/psion-ce /etc/ppp/peers/psion-ce-mschap /etc/ppp/psion-ce.chat; do
+  if [ -e "$f" ] && grep -q 'PsionNet\|Direct Cable Connection' "$f" 2>/dev/null; then
+    rm -f "$f" "$f.psionnet-backup" && echo "removed $f (direct connection, no longer offered)"
+  fi
+done
+# The PAP/CHAP secrets existed only for that route. Put back whatever was
+# there before, or remove ours if there was nothing.
+for f in /etc/ppp/pap-secrets /etc/ppp/chap-secrets; do
+  if [ -e "$f" ] && grep -q 'PsionNet' "$f" 2>/dev/null; then
+    b="$f.psionnet-backup"
+    if [ -e "$b" ] && ! grep -q 'PsionNet' "$b" 2>/dev/null; then
+      mv "$b" "$f" && echo "restored $f"
+    else
+      rm -f "$f" "$b" && echo "removed $f (direct connection, no longer offered)"
+    fi
+  fi
+done
+
+install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion"          /etc/ppp/peers/psion
+# The netBook Pro on Windows CE dials an emulated modem: fakemodem.py answers
+# its AT commands, then hands the line to pppd.
 install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion-ce-modem" /etc/ppp/peers/psion-ce-modem
-install -m 644 -o root -g wheel "$SRC/etc/ppp/psion-ce.chat"    /etc/ppp/psion-ce.chat
-# pap-secrets holds credentials, so it must not be world-readable.
-install -m 600 -o root -g wheel "$SRC/etc/ppp/pap-secrets"      /etc/ppp/pap-secrets
-install -m 600 -o root -g wheel "$SRC/etc/ppp/chap-secrets"     /etc/ppp/chap-secrets
-install -m 600 -o root -g wheel "$SRC/etc/ppp/peers/psion-ce-mschap" /etc/ppp/peers/psion-ce-mschap
-install -m 755 -o root -g wheel "$SRC/etc/ppp/ip-up"            /etc/ppp/ip-up
-install -m 755 -o root -g wheel "$SRC/etc/ppp/ip-down"          /etc/ppp/ip-down
-install -m 644 -o root -g wheel "$SRC/etc/pf.anchors/psion.nat" /etc/pf.anchors/psion.nat
+install -m 755 -o root -g wheel "$SRC/etc/ppp/fakemodem.py"         /etc/ppp/fakemodem.py
+install -m 755 -o root -g wheel "$SRC/etc/ppp/ip-up"                /etc/ppp/ip-up
+install -m 755 -o root -g wheel "$SRC/etc/ppp/ip-down"              /etc/ppp/ip-down
+install -m 644 -o root -g wheel "$SRC/etc/pf.anchors/psion.nat"     /etc/pf.anchors/psion.nat
 
 pfctl -vnf /etc/pf.anchors/psion.nat >/dev/null && echo "pf ruleset parses OK"
 echo "installed."
-echo "  EPOC (Series 5mx/7/netBook/Revo):  sudo pppd call psion    /dev/cu.yourdevice"
-echo "  Windows CE, Direct Connection:     sudo pppd call psion-ce       /dev/cu.yourdevice"
+echo "  EPOC (Series 5mx/7/netBook/Revo):  sudo pppd call psion          /dev/cu.yourdevice"
 echo "  Windows CE, dial-up via modem:     sudo pppd call psion-ce-modem /dev/cu.yourdevice"
