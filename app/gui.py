@@ -115,7 +115,8 @@ class App(ttk.Frame):
         ttk.Label(title, text=("Internet for Psion devices, over the serial cable or your network"
                                if SERIAL else "Internet for the Psion netBook Pro, over your network"),
                   foreground=MUTED).grid(row=1, column=0, sticky="w")
-        ttk.Label(title, text="Series 5mx  ·  Series 7  ·  netBook  ·  Revo  ·  netBook Pro",
+        ttk.Label(title, text=("Series 5mx  ·  Series 7  ·  netBook  ·  Revo  ·  netBook Pro"
+                               if SERIAL else "netBook Pro  ·  Windows CE or PsionLX"),
                   foreground=MUTED, font=("Helvetica", 10)).grid(row=2, column=0, sticky="w")
         row += 1
 
@@ -136,7 +137,10 @@ class App(ttk.Frame):
 
         kind = ttk.Frame(port_box)
         kind.grid(row=3, column=1, columnspan=2, sticky="w", pady=(8, 0))
-        ttk.Label(kind, text="Device:").grid(row=0, column=0)
+        # The note below can be wider than the label and menu; the spare width
+        # goes to the menu's column, or the label drifts away from its menu.
+        kind.columnconfigure(1, weight=1)
+        ttk.Label(kind, text="Device:").grid(row=0, column=0, sticky="w")
         self.device_type = tk.StringVar(
             value=self.prefs.get("device_type", "epoc"))
         self._type_labels = {
@@ -156,7 +160,7 @@ class App(ttk.Frame):
                 self.type_box.set(label)
         if not self.type_box.get():
             self.type_box.current(0)
-        self.type_box.grid(row=0, column=1, padx=(6, 0))
+        self.type_box.grid(row=0, column=1, padx=(6, 0), sticky="w")
         self.type_note = ttk.Label(kind, text="", foreground=MUTED,
                                    font=("Helvetica", 10))
         self.type_note.grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
