@@ -16,6 +16,7 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 
 from . import config
+from . import host as machine
 
 try:                      # preferred path
     import httpx
@@ -189,8 +190,8 @@ def fetch(url: str, referer: str = "", accept_language: str = ""):
     if ssl_failed:
         raise FetchError(
             "Secure connection failed",
-            "The site's certificate could not be verified from this Mac. "
-            "That is a problem between the Mac and the site, not the Psion.",
+            f"The site's certificate could not be verified from {machine.THIS}. "
+            f"That is a problem between {machine.THIS} and the site, not the Psion.",
             retry_insecure=True)
     raise FetchError("Could not reach the site", str(last or "unknown error"))
 

@@ -1,0 +1,24 @@
+#!/bin/sh
+# PsionNet: undo /etc/ppp/ip-up.d/psionnet when the Psion's link goes down.
+[ "$PPP_IPPARAM" = psionnet ] || exit 0
+STATE=/run/psionnet
+
+case "$(cat "$STATE/how" 2>/dev/null)" in
+  nft) nft delete table ip psionnet 2>/dev/null ;;
+  iptables\ *)
+    UPLINK=$(cut -d' ' -f2 "$STATE/how")
+    iptables -t nat -D POSTROUTING -s 10.0.2.0/30 -o "$UPLINK" -j MASQUERADE 2>/dev/null
+    iptables -D FORWARD -i "$PPP_IFACE" -j ACCEPT 2>/dev/null
+    iptables -D FORWARD -o "$PPP_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null ;;
+esac
+rm -f "$STATE/how"
+if [ -f "$STATE/docker" ]; then
+  iptables -D DOCKER-USER -i "$PPP_IFACE" -j ACCEPT 2>/dev/null
+  iptables -D DOCKER-USER -o "$PPP_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null
+  rm -f "$STATE/docker"
+fi
+if [ -f "$STATE/ip_forward" ]; then
+  cat "$STATE/ip_forward" > /proc/sys/net/ipv4/ip_forward
+  rm -f "$STATE/ip_forward"
+fi
+exit 0

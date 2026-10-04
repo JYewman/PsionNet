@@ -13,7 +13,6 @@ pump encodes silence instead, so the HTTP stream never stalls: a GStreamer
 
 import os
 import queue
-import select
 import threading
 import time
 
@@ -120,38 +119,88 @@ class Broadcaster:
                     pass
 
 
-class Pump(threading.Thread):
-    """Read PCM from a file descriptor at real-time pace and publish MP3.
+class _Reader:
+    """Reads one pipe on a thread of its own and hands the bytes over.
 
-    source_fd() returns the current fd to read, or None when there is no
-    source (librespot not running): silence is published either way.
+    select() waits on pipes only on POSIX -- on Windows it takes sockets alone
+    -- while a blocking read on a thread works everywhere. The queue is short,
+    so librespot still blocks on a full pipe much as before, and the stream
+    stays close to real time.
     """
 
-    def __init__(self, source_fd, broadcaster: Broadcaster, encoder: Encoder | None = None):
+    def __init__(self, src):
+        self.src = src                  # kept, so the pipe stays open while read
+        self.fd = src if isinstance(src, int) else src.fileno()
+        self.q: queue.Queue = queue.Queue(maxsize=4)
+        self.buf = b""
+        self.done = False
+        self.abandoned = False          # the pump has moved on to another pipe
+        threading.Thread(target=self._run, daemon=True, name="spotify-pipe").start()
+
+    def is_for(self, src) -> bool:
+        return src is self.src or (isinstance(src, int) and src == self.src)
+
+    def _run(self) -> None:
+        while not self.abandoned:
+            try:
+                chunk = os.read(self.fd, 4096)
+            except OSError:
+                chunk = b""
+            while not self.abandoned:
+                try:
+                    self.q.put(chunk, timeout=0.5)
+                    break
+                except queue.Full:
+                    pass
+            if not chunk:
+                return
+
+    def read(self, budget: int, wait: float) -> bytes:
+        """Up to `budget` bytes, waiting at most `wait` seconds for the first."""
+        if not self.buf:
+            if self.done:
+                return b""
+            try:
+                chunk = self.q.get(timeout=wait) if wait > 0 else self.q.get_nowait()
+            except queue.Empty:
+                return b""
+            if not chunk:
+                self.done = True
+                return b""
+            self.buf = chunk
+        out, self.buf = self.buf[:budget], self.buf[budget:]
+        return out
+
+
+class Pump(threading.Thread):
+    """Read PCM from a pipe at real-time pace and publish MP3.
+
+    source() returns what to read -- a file descriptor or a pipe's file
+    object -- or None when there is no source (librespot not running):
+    silence is published either way.
+    """
+
+    def __init__(self, source, broadcaster: Broadcaster, encoder: Encoder | None = None):
         super().__init__(daemon=True, name="spotify-pump")
-        self.source_fd = source_fd
+        self.source = source
         self.out = broadcaster
         self.enc = encoder or Encoder()
         self.stop_flag = threading.Event()
         self.audio_seconds = 0.0          # real audio published, for tests/status
         self.silence_seconds = 0.0
         self._pending = b""
+        self._reader: _Reader | None = None
 
     def stop(self) -> None:
         self.stop_flag.set()
 
-    def _read_some(self, fd, budget: int, wait: float) -> bytes:
+    def _read_some(self, src, budget: int, wait: float) -> bytes:
         """Up to `budget` bytes, waiting at most `wait` seconds for the first."""
-        try:
-            r, _, _ = select.select([fd], [], [], wait)
-        except (OSError, ValueError):
-            return b""
-        if not r:
-            return b""
-        try:
-            return os.read(fd, budget)
-        except OSError:
-            return b""
+        if self._reader is None or not self._reader.is_for(src):
+            if self._reader is not None:
+                self._reader.abandoned = True
+            self._reader = _Reader(src)     # a new librespot: a new pipe
+        return self._reader.read(budget, wait)
 
     def run(self) -> None:
         start = time.monotonic()
@@ -165,16 +214,16 @@ class Pump(threading.Thread):
             if ahead < -1.0:            # stalled (sleep, debugger): do not burst to catch up
                 start, sent = now, 0.0
 
-            fd = self.source_fd()
+            src = self.source()
             pcm = b""
-            if fd is not None:
+            if src is not None:
                 want = CHUNK - len(self._pending)
-                got = self._read_some(fd, want, CHUNK_SECONDS)
+                got = self._read_some(src, want, CHUNK_SECONDS)
                 pcm = self._pending + got
                 if got:
                     # top up to a whole chunk if librespot is writing steadily
                     while len(pcm) < CHUNK and not self.stop_flag.is_set():
-                        more = self._read_some(fd, CHUNK - len(pcm), 0.02)
+                        more = self._read_some(src, CHUNK - len(pcm), 0.02)
                         if not more:
                             break
                         pcm += more

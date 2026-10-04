@@ -74,7 +74,7 @@ class SpotifyService:
         self.api = WebAPI()
         self.out = Broadcaster()
         self.player = Librespot(log=self._log)
-        self.pump = Pump(self.player.stdout_fd, self.out)
+        self.pump = Pump(self.player.audio_source, self.out)
         self._device_id = ""
         self._user = ""
         self._status_cache = (0.0, None)
@@ -83,6 +83,11 @@ class SpotifyService:
 
     def _log(self, line: str) -> None:
         print(f"spotify: {line}", flush=True)
+
+    def stop(self) -> None:
+        """The proxy is stopping: take the speaker down with it."""
+        self.player.stop()
+        self.pump.stop()
 
     def start(self) -> None:
         self.pump.start()

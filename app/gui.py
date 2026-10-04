@@ -20,6 +20,9 @@ import probe
 import resources
 import settings
 import spotify_login
+from psionproxy import host as machine
+
+SERIAL = control.serial_supported()     # not on Windows: no pppd there
 
 # Resolved at call time: frozen, the data lives outside the code archive.
 def _icons_dir():
@@ -54,6 +57,7 @@ class App(ttk.Frame):
         self.ifaces: list[probe.Iface] = []
         self._login: spotify_login.Login | None = None
         self._ppp_log_pos = 0
+        self._proxy_host = ""
         self.prefs = settings.load()
         # lsof costs ~110 ms and runs on the Tk thread, so it must not ride the
         # 2 s tick or the UI stutters. Refresh port holders on a slow cadence.
@@ -73,7 +77,7 @@ class App(ttk.Frame):
                      "backup", "sketch", "word", "agenda", "jotter", "record",
                      "sheet", "data", "ssd", "disk", "opl",
                      "psionnet_16", "psionnet_32", "psionnet_64",
-                     "psionnet_128", "psionnet_256",
+                     "psionnet_128", "psionnet_256", "psionnet_512",
                      "appicon_32", "appicon_128", "appicon_256"):
             path = _icons_dir() / f"{name}.png"
             if path.exists():
@@ -83,10 +87,11 @@ class App(ttk.Frame):
                     pass
         # PsionNet blue, not Reconnect orange -- the two sit next to each
         # other in the Dock and were indistinguishable.
-        big = self._icons.get("psionnet_256") or self._icons.get("psionnet_128")
-        if big is not None:
+        sizes = [self._icons[n] for n in ("psionnet_256", "psionnet_128", "psionnet_512",
+                                          "psionnet_64", "psionnet_32") if n in self._icons]
+        if sizes:
             try:
-                self.master.iconphoto(True, big)
+                self.master.iconphoto(True, *sizes)
             except tk.TclError:
                 pass
 
@@ -107,7 +112,8 @@ class App(ttk.Frame):
         title = ttk.Frame(header)
         title.grid(row=0, column=1, sticky="w")
         ttk.Label(title, text="PsionNet", font=("Helvetica", 17, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(title, text="Internet for Psion devices, over the serial cable or your network",
+        ttk.Label(title, text=("Internet for Psion devices, over the serial cable or your network"
+                               if SERIAL else "Internet for the Psion netBook Pro, over your network"),
                   foreground=MUTED).grid(row=1, column=0, sticky="w")
         ttk.Label(title, text="Series 5mx  ·  Series 7  ·  netBook  ·  Revo  ·  netBook Pro",
                   foreground=MUTED, font=("Helvetica", 10)).grid(row=2, column=0, sticky="w")
@@ -139,6 +145,9 @@ class App(ttk.Frame):
             "netBook Pro (CE, network)": "ce-lan",
             "netBook Pro (PsionLX, network)": "lx-lan",
         }
+        if not SERIAL:
+            self._type_labels = {k: v for k, v in self._type_labels.items()
+                                 if control.is_network(v)}
         self.type_box = ttk.Combobox(
             kind, state="readonly", width=32,
             values=list(self._type_labels))
@@ -154,6 +163,11 @@ class App(ttk.Frame):
         self.type_box.bind("<<ComboboxSelected>>", lambda e: self._type_changed())
         self.free_btn = ttk.Button(port_box, text="Quit Reconnect to free the port",
                                    command=self.free_port)
+        if not SERIAL:
+            # Only devices on the network: no port to pick, nothing to connect.
+            for w in port_box.grid_slaves(row=0) + [self.port_note]:
+                w.grid_remove()
+            port_box.configure(text="  Device  ")
         row += 1
 
         # --- link ---
@@ -256,7 +270,8 @@ class App(ttk.Frame):
         self.status = ttk.Label(self, text="", foreground=MUTED, anchor="w")
         self.status.grid(row=row, column=0, sticky="ew", pady=(8, 0))
 
-        self.refresh_ports()
+        if SERIAL:
+            self.refresh_ports()
         self.refresh_ifaces()
         self._type_changed()
 
@@ -264,7 +279,8 @@ class App(ttk.Frame):
         frame = ttk.Frame(notebook)
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
-        text = tk.Text(frame, height=11, wrap="none", font=("Menlo", 10),
+        text = tk.Text(frame, height=11, wrap="none",
+                       font=("Menlo", 10) if machine.MAC else "TkFixedFont",
                        background="#1e1e1e", foreground="#d4d4d4",
                        insertbackground="#d4d4d4", relief="flat",
                        highlightthickness=0)
@@ -451,7 +467,7 @@ class App(ttk.Frame):
         elif kind == "ce-lan":
             self.type_note.configure(text=(
                 "The netBook Pro joins your network with its own card. "
-                "Set Internet Explorer's proxy to this Mac."))
+                f"Set Internet Explorer's proxy to {machine.THIS}."))
         elif kind == "lx-lan":
             self.type_note.configure(text=(
                 "PsionLX on your network. Run the command below on it once; after "
@@ -465,7 +481,7 @@ class App(ttk.Frame):
 
     def _apply_mode(self) -> None:
         """Serial devices use the port and the PPP link; network devices use
-        neither, only the proxy on one of this Mac's LAN addresses."""
+        neither, only the proxy on one of this computer's LAN addresses."""
         network = control.is_network(self.selected_type())
         state = "disabled" if network else "readonly"
         self.port_menu.configure(state=state)
@@ -473,6 +489,8 @@ class App(ttk.Frame):
         if network:
             self.iface_row.grid(row=2, column=1, columnspan=2, sticky="w", pady=(8, 0))
             self.link_btn.configure(state="disabled")
+            if not SERIAL:
+                self.link_btn.grid_remove()
         else:
             self.iface_row.grid_remove()
             self.link_btn.configure(state="normal")
@@ -509,11 +527,13 @@ class App(ttk.Frame):
                 "and the two would corrupt each other's data. Free the port first.")
             return
         if not probe.ppp_config_installed(self.selected_type()):
+            where = ("/etc/ppp/peers/psion and the NAT hooks in /etc/ppp/ip-up.d"
+                     if machine.LINUX else
+                     "/etc/ppp/peers/psion, /etc/ppp/ip-up and /etc/pf.anchors/psion.nat")
             if not messagebox.askyesno(
                     "Set up PPP?",
                     "The PPP configuration is not installed yet.\n\n"
-                    "Install it now? This writes /etc/ppp/peers/psion, "
-                    "/etc/ppp/ip-up and /etc/pf.anchors/psion.nat, and asks for "
+                    f"Install it now? This writes {where}, and asks for "
                     "your password."):
                 return
             ok, msg = control.ppp_install()
@@ -548,14 +568,15 @@ class App(ttk.Frame):
             if iface is None:
                 messagebox.showwarning(
                     "No network",
-                    "This Mac is not on a private network, so there is nowhere for "
-                    "the netBook Pro to reach the proxy.")
+                    f"{machine.THIS.capitalize()} is not on a private network, so there "
+                    "is nowhere for the netBook Pro to reach the proxy.")
                 return
             # The LAN address, served only to that network. This proxy strips
             # TLS, so it is never offered beyond the network it sits on.
             argv = control.proxy_argv(iface.ip, 8080, self.fidelity.get(),
                                       self.images.get(), allow=iface.network,
                                       spotify=(kind == "lx-lan"), software=(kind == "lx-lan"))
+            self._proxy_host = iface.ip
             self.prefs["lan_iface"] = iface.name
             settings.save(self.prefs)
         else:
@@ -564,6 +585,7 @@ class App(ttk.Frame):
             # never be offered to the LAN.
             host = link.local_ip or "127.0.0.1"
             argv = control.proxy_argv(host, 8080, self.fidelity.get(), self.images.get())
+            self._proxy_host = host
         self.proxy.start(argv)
 
     # --- polling -----------------------------------------------------------
@@ -616,7 +638,7 @@ class App(ttk.Frame):
                     text=f"The proxy listens on {iface.ip}, for devices on {iface.network}")
             else:
                 self.link_state.configure(text="No private network", foreground=BAD)
-                self.link_detail.configure(text="Join this Mac to the netBook Pro's network")
+                self.link_detail.configure(text=f"Join {machine.THIS} to the netBook Pro's network")
             self.link_btn.configure(text="Connect")
         elif link.up:
             port = self.selected_port()
@@ -642,7 +664,7 @@ class App(ttk.Frame):
             self.link_detail.configure(text="")
             self.link_btn.configure(text="Connect")
 
-        px = probe.proxy_state()
+        px = probe.proxy_state(host=self._proxy_host)
         running = px.running or self.proxy.running
         if running:
             self.proxy_state.configure(text="Running", foreground=OK)
@@ -668,7 +690,7 @@ class App(ttk.Frame):
             if self.selected_type() == "lx-lan":
                 self._spotify_tick()
             import time
-            if time.time() - self._holders_checked > 10:
+            if SERIAL and time.time() - self._holders_checked > 10:
                 self.refresh_ports(with_holders=True)
             self.after(POLL_SLOW, self._tick_slow)
             return
@@ -713,24 +735,36 @@ class App(ttk.Frame):
 
 
 def main() -> None:
-    root = tk.Tk()
+    if machine.WINDOWS:
+        # Without this Windows draws the window at 96 dpi and scales it up,
+        # blurring every letter on a high-resolution screen.
+        try:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except (AttributeError, OSError):
+            pass
+    # className names the window to Linux desktops, matching psionnet.desktop.
+    root = tk.Tk(className="PsionNet")
     root.title("PsionNet")
-    root.minsize(640, 600)
+    root.minsize(640, 600 if SERIAL else 520)
 
-    # On macOS the application menu has to be built BEFORE it is attached, or
-    # Tk silently discards it.
-    menubar = tk.Menu(root)
-    app_menu = tk.Menu(menubar, name="apple")
-    menubar.add_cascade(menu=app_menu)
-    root.config(menu=menubar)
+    if machine.MAC:
+        # On macOS the application menu has to be built BEFORE it is attached,
+        # or Tk silently discards it.
+        menubar = tk.Menu(root)
+        app_menu = tk.Menu(menubar, name="apple")
+        menubar.add_cascade(menu=app_menu)
+        root.config(menu=menubar)
+    theme = "aqua" if machine.MAC else "vista" if machine.WINDOWS else "clam"
     try:
-        ttk.Style().theme_use("aqua")     # native on macOS; falls back elsewhere
+        ttk.Style().theme_use(theme)
     except tk.TclError:
         pass
     ui = App(root)
-    # Cmd-Q bypasses WM_DELETE_WINDOW, so route it to the same teardown or the
-    # proxy child outlives the window.
-    root.createcommand("tk::mac::Quit", ui._on_close)
+    if machine.MAC:
+        # Cmd-Q bypasses WM_DELETE_WINDOW, so route it to the same teardown or
+        # the proxy child outlives the window.
+        root.createcommand("tk::mac::Quit", ui._on_close)
     root.mainloop()
 
 

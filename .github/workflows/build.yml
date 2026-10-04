@@ -1,0 +1,225 @@
+# PsionNet for Windows (an installer) and Debian (a .deb), from the same source
+# as the Mac app -- which is built, signed and notarised on a Mac instead
+# (bin/build-app.sh, bin/sign-app.sh). PyInstaller cannot cross-build, hence
+# a runner per system. librespot, the Spotify speaker, has no official builds,
+# so it is compiled here too, once per version, and cached.
+#
+# Runs for a v* tag, which is what a release is built from; by hand; and for
+# pushes to the branch this was developed on.
+
+name: Windows and Debian builds
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["windows-debian"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LIBRESPOT_VERSION: "0.8.0"
+  PYTHON_VERSION: "3.14"
+
+jobs:
+  librespot-windows:
+    runs-on: windows-latest
+    steps:
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: librespot-bin
+          key: librespot-${{ env.LIBRESPOT_VERSION }}-windows-x64-native-tls-1
+      - name: Build librespot (SChannel for TLS; audio only through the pipe)
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          cargo install librespot --version "$LIBRESPOT_VERSION" --locked --root librespot-bin \
+            --no-default-features --features native-tls,with-libmdns
+          curl -fsSL -o librespot-bin/LICENSE \
+            "https://raw.githubusercontent.com/librespot-org/librespot/v$LIBRESPOT_VERSION/LICENSE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: librespot-windows
+          path: librespot-bin
+
+  librespot-linux:
+    runs-on: ubuntu-latest
+    # Built on Debian 12, so it runs on Debian 12 and everything newer.
+    container: rust:1-bookworm
+    steps:
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: librespot-bin
+          key: librespot-${{ env.LIBRESPOT_VERSION }}-bookworm-amd64-rustls-1
+      - name: Build librespot (rustls, so no OpenSSL to depend on; audio only through the pipe)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cargo install librespot --version "$LIBRESPOT_VERSION" --locked --root librespot-bin \
+            --no-default-features --features rustls-tls-webpki-roots,with-libmdns
+          curl -fsSL -o librespot-bin/LICENSE \
+            "https://raw.githubusercontent.com/librespot-org/librespot/v$LIBRESPOT_VERSION/LICENSE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: librespot-linux
+          path: librespot-bin
+
+  windows:
+    needs: librespot-windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: librespot-windows
+          path: librespot-bin
+      - name: Python packages
+        run: python -m pip install --disable-pip-version-check -r proxy/requirements.txt pyinstaller
+      - name: Tests
+        run: |
+          python proxy/tests/test_units.py
+          python proxy/tests/test_startup.py
+          python proxy/tests/test_network.py
+          python packaging/ci/check_stop.py
+      - name: Build
+        env:
+          PSIONNET_LIBRESPOT: ${{ github.workspace }}\librespot-bin\bin\librespot.exe
+          PSIONNET_LIBRESPOT_LICENSE: ${{ github.workspace }}\librespot-bin\LICENSE
+        run: python -m PyInstaller --noconfirm --clean PsionNet.spec
+      - name: Smoke test
+        run: python packaging/ci/smoke.py dist/PsionNet/PsionNet.exe
+      - name: The window
+        shell: pwsh
+        run: |
+          $app = Start-Process -FilePath dist\PsionNet\PsionNet.exe -PassThru
+          Start-Sleep -Seconds 15
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          New-Item -ItemType Directory -Force shots | Out-Null
+          $bmp.Save("shots\windows.png")
+          if ($app.HasExited) { throw "PsionNet.exe exited ($($app.ExitCode))" }
+          Stop-Process -Id $app.Id
+      - name: Installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          $v = (Select-String -Path PsionNet.spec -Pattern '^VERSION = "(.*)"').Matches[0].Groups[1].Value
+          & $iscc "/DAppVersion=$v" packaging\windows\psionnet.iss
+          if ($LASTEXITCODE -ne 0) { throw "iscc failed" }
+      - name: Install, test the installed copy, uninstall
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist\PsionNet-*-Windows-Setup.exe).FullName
+          Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
+          $exe = "$env:ProgramFiles\PsionNet\PsionNet.exe"
+          if (-not (Test-Path $exe)) { throw "not installed" }
+          netsh advfirewall firewall show rule name=PsionNet
+          if ($LASTEXITCODE -ne 0) { throw "no firewall rule" }
+          python packaging/ci/smoke.py $exe
+          if ($LASTEXITCODE -ne 0) { throw "the installed copy failed its smoke test" }
+          Start-Process "$env:ProgramFiles\PsionNet\unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES" -Wait
+          Start-Sleep -Seconds 3
+          if (Test-Path $exe) { throw "the uninstaller left PsionNet.exe" }
+          netsh advfirewall firewall show rule name=PsionNet | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "the uninstaller left the firewall rule" }
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/PsionNet-*-Windows-Setup.exe
+            shots/
+
+  debian:
+    needs: librespot-linux
+    runs-on: ubuntu-latest
+    # Debian 12's glibc, so the package runs on Debian 12 and everything newer.
+    container: python:3.14-bookworm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: librespot-linux
+          path: librespot-bin
+      - name: Tools
+        run: |
+          apt-get update -qq && apt-get install -y -qq procps >/dev/null
+          chmod +x librespot-bin/bin/librespot
+          python -c "import tkinter; print('Tk', tkinter.TkVersion)"
+      - name: Python packages
+        run: python -m pip install --disable-pip-version-check --root-user-action=ignore -r proxy/requirements.txt pyinstaller
+      - name: Tests
+        run: |
+          python proxy/tests/test_units.py
+          python proxy/tests/test_startup.py
+          python proxy/tests/test_network.py
+          python packaging/ci/check_stop.py
+      - name: Build
+        env:
+          PSIONNET_LIBRESPOT: ${{ github.workspace }}/librespot-bin/bin/librespot
+          PSIONNET_LIBRESPOT_LICENSE: ${{ github.workspace }}/librespot-bin/LICENSE
+        run: |
+          python -m PyInstaller --noconfirm --clean PsionNet.spec
+          sh packaging/linux/build-deb.sh
+      - name: Smoke test
+        run: python packaging/ci/smoke.py dist/PsionNet/PsionNet
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debian
+          path: build/deb/*.deb
+
+  debian-test:
+    needs: debian
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: debian
+          path: deb
+      - name: Install on clean Debian 12 and 13, open the window, smoke-test
+        run: |
+          mkdir -p shots
+          for release in bookworm trixie; do
+            echo "::group::Debian $release"
+            docker run --rm -v "$PWD:/w" -w /w debian:$release sh -ec '
+              apt-get update -qq
+              DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ./deb/psionnet_*.deb \
+                python3 xvfb xauth imagemagick fonts-dejavu-core >/dev/null
+              python3 packaging/ci/smoke.py /opt/psionnet/PsionNet
+              xvfb-run -a -s "-screen 0 1000x860x24" sh -c "
+                psionnet > /tmp/gui.log 2>&1 & GUI=\$!
+                sleep 15
+                import -window root shots/debian-'$release'.png
+                kill -0 \$GUI || { cat /tmp/gui.log; exit 1; }
+                kill \$GUI"'
+            echo "::endgroup::"
+          done
+      - name: The serial link, end to end (a pty for the cable, a namespace for the Psion)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ./deb/psionnet_*.deb socat curl "linux-modules-extra-$(uname -r)" >/dev/null || \
+            sudo apt-get install -y -qq ./deb/psionnet_*.deb socat curl >/dev/null
+          sudo modprobe ppp_async || true
+          echo "::group::EPOC (direct PPP at 115200)"
+          sudo sh packaging/ci/ppp-loopback.sh epoc
+          echo "::endgroup::"
+          echo "::group::netBook Pro on Windows CE (dial-up through the fake modem at 19200)"
+          sudo sh packaging/ci/ppp-loopback.sh ce
+          echo "::endgroup::"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debian-screenshots
+          path: shots/

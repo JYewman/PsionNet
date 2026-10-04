@@ -19,6 +19,7 @@ from flask import Flask, Response, g, request
 from werkzeug.serving import WSGIRequestHandler
 
 from . import config, pages
+from . import host as machine
 from .extract import extract
 from .fetch import FetchError, decode_body, fetch
 from .images import transcode
@@ -48,7 +49,7 @@ _image_cache: dict[str, tuple[bytes, str]] = {}
 # predictable, so every URL and search query the user browses would be
 # world-readable, and a symlink planted at the path would make us append to a
 # file of someone else's choosing.
-_LOG_DIR = Path.home() / "Library" / "Logs" / "PsionNet"
+_LOG_DIR = machine.log_dir()
 REQUEST_LOG = str(_LOG_DIR / "proxy-requests.log")
 _PID = __import__("os").getpid()
 
@@ -61,9 +62,9 @@ def _log(line: str) -> None:
         # O_NOFOLLOW refuses to open a symlink; 0600 keeps the browsing history
         # readable only by its owner.
         fd = os.open(REQUEST_LOG,
-                     os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW,
+                     os.O_WRONLY | os.O_CREAT | os.O_APPEND | machine.NOFOLLOW,
                      0o600)
-        with os.fdopen(fd, "a") as fh:
+        with os.fdopen(fd, "a", encoding="utf-8", errors="replace") as fh:
             fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [pid {_PID}] {line}\n")
     except Exception:
         pass
@@ -440,20 +441,46 @@ def _ppp_is_up() -> bool:
         s.close()
 
 
+def _stop_children_on_exit() -> None:
+    """Stop librespot when the proxy stops.
+
+    librespot runs in a session of its own, so stopping the proxy's process
+    group does not reach it, and a "netBook Pro" speaker would outlive the
+    proxy. (On Windows the app ends the whole process tree instead.)
+    """
+    import atexit
+    import signal
+
+    def stop(*_):
+        if config.SPOTIFY:
+            from .spotify import service
+            svc = service.get()
+            if svc is not None and hasattr(svc, "stop"):
+                svc.stop()
+
+    atexit.register(stop)
+    if hasattr(signal, "SIGTERM") and not machine.WINDOWS:
+        def on_term(signum, frame):
+            stop()
+            raise SystemExit(0)
+        signal.signal(signal.SIGTERM, on_term)
+
+
 def main() -> None:
     # MANDATORY -- see module docstring.
     WSGIRequestHandler.protocol_version = "HTTP/1.0"
+    _stop_children_on_exit()
 
     host = config.BIND_HOST
     if config.ALLOWED_NETS:
         # Network mode: the LAN address is either here or it is not; there is
         # no link that might come up later, so a failure is an error.
         if not _ppp_is_up():
-            print(f"error: {host} is not an address of this Mac.")
+            print(f"error: {host} is not an address of {machine.THIS}.")
             raise SystemExit(1)
         nets = ", ".join(str(n) for n in config.ALLOWED_NETS)
         print(f"PsionNet proxy listening on {host}:{config.BIND_PORT} (network mode)")
-        print(f"Serving only this Mac and {nets}.")
+        print(f"Serving only {machine.THIS} and {nets}.")
         print(f"Set the device's browser proxy to {host}, port {config.BIND_PORT}.")
         from . import discovery
         discovery.start(host, config.BIND_PORT, config.ALLOWED_NETS)
@@ -471,7 +498,7 @@ def main() -> None:
         # binding it to every interface would offer that service to anything on
         # the LAN. Once ppp0 exists, restart to bind the PPP address.
         print(f"note: {config.BIND_HOST} is not up yet (the Psion is not connected),")
-        print("      so listening on 127.0.0.1 instead -- you can test from this Mac.")
+        print(f"      so listening on 127.0.0.1 instead -- you can test from {machine.THIS}.")
         print("      Restart once the link is up to serve the Psion.")
         host = "127.0.0.1"
 

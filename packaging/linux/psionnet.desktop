@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=PsionNet
+GenericName=Internet for Psion devices
+Comment=Put a Psion on the modern internet, over the serial cable or your network
+Exec=psionnet
+Icon=psionnet
+Terminal=false
+Categories=Network;Utility;
+Keywords=Psion;netBook;EPOC;PPP;proxy;
+StartupWMClass=PsionNet

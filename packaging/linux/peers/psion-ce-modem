@@ -1,0 +1,35 @@
+# PsionNet: a netBook Pro on Windows CE, dialling through a MODEM entry on
+# COM1. The Debian version of etc/ppp/peers/psion-ce-modem.
+#
+# PsionNet starts it as
+#
+#     pppd call psion-ce-modem /dev/ttyUSB0 logfile ~/.local/state/psionnet/ppp.log
+#
+# CE drives the port as if a Hayes modem were attached, so the fake modem
+# answers like one -- OK to every AT command, CONNECT to the dial -- and then
+# PPP starts. It logs every byte to /var/log/psionnet-fakemodem.log. Windows
+# CE's "Direct Connection" negotiates PPP and then carries no traffic; dial-up
+# is the route. (The macOS file explains both at length.)
+connect "/usr/bin/python3 /usr/lib/psionnet/fakemodem.py"
+
+# 19200, NOT 115200: CE's modem entry sets the line speed, and on the netBook
+# Pro it defaults to 19200. If you raise it in the device's modem settings,
+# raise this to match.
+19200
+10.0.2.1:10.0.2.2
+
+ms-dns 1.1.1.1
+ms-dns 9.9.9.9
+
+noauth
+local
+nodetach
+nodefaultroute
+crtscts
+asyncmap 0
+mtu 1500
+mru 1500
+lcp-echo-interval 30
+lcp-echo-failure 4
+ipparam psionnet
+debug

@@ -14,3 +14,7 @@ httpx[http2]>=0.28
 # lameenc encodes the audio as MP3. It also needs librespot, which is not a
 # Python package:  brew install librespot
 lameenc>=1.8
+
+# Windows and Linux: the app lists network interfaces through ifaddr, where a
+# Mac reads ifconfig.
+ifaddr>=0.2; sys_platform != "darwin"

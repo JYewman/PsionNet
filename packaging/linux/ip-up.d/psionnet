@@ -1,0 +1,55 @@
+#!/bin/sh
+# PsionNet: let the Psion reach the internet through this computer, when its
+# PPP link comes up. Debian's /etc/ppp/ip-up runs every script here, as root,
+# for every PPP link -- a VPN's included -- so act only on the link PsionNet
+# tagged with "ipparam psionnet". The Psion is 10.0.2.2 behind 10.0.2.1.
+[ "$PPP_IPPARAM" = psionnet ] || exit 0
+STATE=/run/psionnet
+mkdir -p "$STATE"
+
+# Remember whether forwarding was on, so ip-down can put it back as it was.
+[ -f "$STATE/ip_forward" ] || cat /proc/sys/net/ipv4/ip_forward > "$STATE/ip_forward"
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# Out through whatever carries the default route now: it changes as the
+# computer moves between Wi-Fi and a cable.
+UPLINK=$(ip -4 route show default 2>/dev/null |
+         awk '{for (i = 1; i < NF; i++) if ($i == "dev") { print $(i + 1); exit }}')
+if [ -z "$UPLINK" ]; then
+  logger -t psionnet "no default route: the Psion has no way out"
+  exit 0
+fi
+
+if command -v nft >/dev/null 2>&1; then
+  nft -f - <<NFT
+table ip psionnet
+delete table ip psionnet
+table ip psionnet {
+  chain postrouting {
+    type nat hook postrouting priority srcnat; policy accept;
+    ip saddr 10.0.2.0/30 oifname "$UPLINK" masquerade
+  }
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    iifname "$PPP_IFACE" accept
+    oifname "$PPP_IFACE" ct state established,related accept
+  }
+}
+NFT
+  echo nft > "$STATE/how"
+else
+  iptables -t nat -A POSTROUTING -s 10.0.2.0/30 -o "$UPLINK" -j MASQUERADE
+  iptables -A FORWARD -i "$PPP_IFACE" -j ACCEPT
+  iptables -A FORWARD -o "$PPP_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  echo "iptables $UPLINK" > "$STATE/how"
+fi
+
+# Docker sets the forward policy to drop, which no rule above can override;
+# it keeps the DOCKER-USER chain for exactly this.
+if iptables -L DOCKER-USER -n >/dev/null 2>&1; then
+  iptables -I DOCKER-USER -i "$PPP_IFACE" -j ACCEPT
+  iptables -I DOCKER-USER -o "$PPP_IFACE" -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  echo "$PPP_IFACE" > "$STATE/docker"
+fi
+logger -t psionnet "the Psion is online through $UPLINK ($PPP_IFACE)"
+exit 0

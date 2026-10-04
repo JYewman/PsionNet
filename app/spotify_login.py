@@ -12,25 +12,13 @@ Nothing here touches Tk: results go into a queue the GUI drains.
 import http.server
 import queue
 import secrets
-import sys
 import threading
 import webbrowser
-from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 
-def _proxy_path() -> None:
-    """Make psionproxy importable, from source or from the frozen bundle."""
-    if getattr(sys, "frozen", False):
-        base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
-    else:
-        base = Path(__file__).resolve().parent.parent
-    p = str(base / "proxy")
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-
-_proxy_path()
+import proxypath  # noqa: E402,F401  (makes psionproxy importable)
+from psionproxy import host as machine  # noqa: E402
 from psionproxy.spotify import store, webapi  # noqa: E402
 
 PAGE = """<!doctype html><meta charset="utf-8"><title>PsionNet</title>
@@ -71,6 +59,8 @@ class Login:
                         ok, msg = True, "Logged in to Spotify."
                     except webapi.SpotifyError as exc:
                         msg = exc.message
+                    except OSError as exc:
+                        msg = f"PsionNet could not save the login: {exc}"
                 body = PAGE.format(
                     title="PsionNet is connected to Spotify" if ok else "Spotify sign-in failed",
                     body="You can close this tab. The netBook Pro's Spotify app is ready."
@@ -86,7 +76,7 @@ class Login:
         try:
             self._server = http.server.HTTPServer(("127.0.0.1", webapi.REDIRECT_PORT), Handler)
         except OSError:
-            self.results.put((False, f"Port {webapi.REDIRECT_PORT} on this Mac is in use, "
+            self.results.put((False, f"Port {webapi.REDIRECT_PORT} on {machine.THIS} is in use, "
                                      "so the sign-in has nowhere to return to."))
             return
         threading.Thread(target=self._serve, daemon=True, name="spotify-login").start()

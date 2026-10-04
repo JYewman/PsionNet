@@ -10,7 +10,9 @@ import os
 import time
 from pathlib import Path
 
-DIR = Path.home() / "Library" / "Application Support" / "PsionNet"
+from .. import host as machine
+
+DIR = machine.data_dir()
 TOKEN = DIR / "spotify-token.json"       # written by the app's login, refreshed by the proxy
 STATUS = DIR / "spotify-status.json"     # written by the proxy, read by the app
 LIBRESPOT_CACHE = DIR / "librespot"
@@ -27,15 +29,24 @@ def _ensure_dir(path: Path) -> None:
 def write_json(path: Path, data: dict) -> None:
     _ensure_dir(path.parent)
     tmp = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w") as fh:
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | machine.NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=1)
-    os.replace(tmp, path)
+    # Windows refuses to replace a file another process has open -- the app
+    # reading the status, say -- so give it a moment and try again.
+    for attempt in range(10):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if not machine.WINDOWS or attempt == 9:
+                raise
+            time.sleep(0.05)
 
 
 def read_json(path: Path) -> dict | None:
     try:
-        with open(path) as fh:
+        with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
         return data if isinstance(data, dict) else None
     except (OSError, ValueError):

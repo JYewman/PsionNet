@@ -15,8 +15,8 @@ here for state and errors.
 """
 
 import os
+import queue
 import re
-import select
 import shutil
 import subprocess
 import sys
@@ -24,6 +24,7 @@ import threading
 import time
 from pathlib import Path
 
+from .. import host as machine
 from . import store
 
 DEVICE_NAME = "netBook Pro"
@@ -31,12 +32,14 @@ _OAUTH_URL = re.compile(r"https://accounts\.spotify\.com/\S+")
 _REFUSED = ("login request was denied", "invalid_credentials", "could not initialize spirc")
 
 
+EXE = "librespot.exe" if machine.WINDOWS else "librespot"
+
+
 def binary() -> str | None:
-    """The bundled librespot when frozen, else one on this Mac."""
+    """The bundled librespot when frozen, else one installed on this computer."""
     if getattr(sys, "frozen", False):
         base = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
-        for cand in (base / "bin" / "librespot",
-                     Path(sys.executable).resolve().parent / "librespot"):
+        for cand in (base / "bin" / EXE, Path(sys.executable).resolve().parent / EXE):
             if cand.exists():
                 return str(cand)
     found = shutil.which("librespot")
@@ -64,10 +67,11 @@ class Librespot:
         self._refused = False      # Spotify refused the cached credentials as a speaker
 
     # -- the pump reads this --
-    def stdout_fd(self):
+    def audio_source(self):
+        """The running speaker's stdout, which carries the audio; None if none."""
         p = self.proc
         if p is not None and p.poll() is None and p.stdout is not None:
-            return p.stdout.fileno()
+            return p.stdout
         return None
 
     def _creds(self) -> Path:
@@ -120,40 +124,40 @@ class Librespot:
         self.log("librespot: signing in the netBook Pro speaker; librespot opens a browser window")
         argv = self._common(exe) + ["--enable-oauth", "--backend", "pipe", "--device", os.devnull]
         p = self._signin = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                            bufsize=0, start_new_session=True)
+                                            **machine.quiet_child())
+        # Read on a thread: Windows cannot wait on a pipe the way POSIX can.
+        lines: queue.Queue = queue.Queue()
+
+        def read():
+            for raw in iter(p.stdout.readline, b""):
+                lines.put(raw.decode("utf-8", "replace").rstrip())
+            lines.put(None)
+        threading.Thread(target=read, daemon=True, name="librespot-sign-in").start()
         deadline = time.time() + self.SIGN_IN_TIMEOUT
         opened = signed_in = False
-        pending = b""
         try:
             while time.time() < deadline and not self._stop.is_set():
                 if signed_in and self._creds().exists():
                     break
-                ready, _, _ = select.select([p.stdout], [], [], 1.0)
-                if not ready:
-                    if p.poll() is not None:
-                        break
+                try:
+                    line = lines.get(timeout=1.0)
+                except queue.Empty:
                     continue
-                chunk = os.read(p.stdout.fileno(), 4096)
-                if not chunk:
+                if line is None:                    # librespot exited
                     break
-                pending += chunk
-                while b"\n" in pending:
-                    raw, pending = pending.split(b"\n", 1)
-                    line = raw.decode("utf-8", "replace").rstrip()
-                    low = line.lower()
-                    m = _OAUTH_URL.search(line)
-                    if m and not opened:
-                        # librespot opens the browser itself (with /usr/bin/open);
-                        # opening it here too would give two tabs. If the
-                        # browser is already signed in to Spotify, this
-                        # completes on its own in a few seconds.
-                        opened = True
-                        self.message = "Sign in to Spotify in the browser window, for the netBook Pro speaker"
-                        self.log("librespot: if no browser window opened, visit " + m.group(0))
-                    elif "authenticated as" in low:
-                        signed_in = True
-                    elif "error" in low or "warn" in low:
-                        self.log("librespot sign-in: " + line[-200:])
+                low = line.lower()
+                m = _OAUTH_URL.search(line)
+                if m and not opened:
+                    # librespot opens the browser itself; opening it here too
+                    # would give two tabs. If the browser is already signed in
+                    # to Spotify, this completes on its own in a few seconds.
+                    opened = True
+                    self.message = "Sign in to Spotify in the browser window, for the netBook Pro speaker"
+                    self.log("librespot: if no browser window opened, visit " + m.group(0))
+                elif "authenticated as" in low:
+                    signed_in = True
+                elif "error" in low or "warn" in low:
+                    self.log("librespot sign-in: " + line[-200:])
         finally:
             self._kill(p)
             self._signin = None
@@ -165,7 +169,8 @@ class Librespot:
         while not self._stop.is_set():
             exe = binary()
             if not exe:
-                self._fail("librespot is not installed (brew install librespot)")
+                self._fail("librespot is not installed" +
+                           (" (brew install librespot)" if machine.MAC else ""))
                 return
             if not self._creds().exists():
                 if self._sign_ins >= 1:
@@ -183,7 +188,7 @@ class Librespot:
             self.log("librespot: " + " ".join(argv[1:]))
             self.proc = subprocess.Popen(argv, stdout=subprocess.PIPE,
                                          stderr=subprocess.PIPE, bufsize=0,
-                                         start_new_session=True)
+                                         **machine.quiet_child())
             started = time.time()
             self._read_log(self.proc)
             code = self.proc.wait()

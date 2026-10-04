@@ -19,6 +19,13 @@ def _bundle_root() -> Path:
 
 def main() -> None:
     if "--run-proxy" in sys.argv:
+        # The app reads this output as UTF-8. Windows would otherwise write its
+        # own code page, and a song title outside it stops the proxy's log.
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+            except (AttributeError, ValueError):
+                pass
         root = _bundle_root()
         sys.path.insert(0, str(root / "proxy"))
         from psionproxy import config
