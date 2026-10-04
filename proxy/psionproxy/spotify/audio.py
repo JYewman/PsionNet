@@ -233,6 +233,11 @@ class Pump(threading.Thread):
             if pcm:
                 whole = len(pcm) // 4 * 4                  # keep frames intact
                 pcm, self._pending = pcm[:whole], pcm[whole:]
+            # Less than one whole frame left over is not audio: without this,
+            # 1-3 stray bytes and a quiet pipe published nothing and moved the
+            # clock on not at all, and the stream stalled for good. (Windows
+            # pipes split writes anywhere; POSIX ones happen to keep to 4.)
+            if pcm:
                 self.out.publish(self.enc.encode(pcm))
                 secs = len(pcm) / BYTES_PER_SEC
                 sent += secs

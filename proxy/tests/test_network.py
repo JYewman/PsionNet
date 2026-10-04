@@ -70,6 +70,27 @@ except OSError:
 ok(stray == b"", "discovery ignores anything but PSIONNET?")
 u.close()
 
+# --- the audio pump: a stray part-frame must not stall the stream ------------
+# A pipe read can end mid-frame (Windows splits writes anywhere). Up to 1.2,
+# 1-3 bytes left over with nothing more to read stopped the stream for good.
+import os
+import queue as _queue
+from psionproxy.spotify.audio import Broadcaster, Pump
+_r, _w = os.pipe()
+_out = Broadcaster()
+_q = _out.subscribe()
+_pump = Pump(lambda: _r, _out)
+_pump.start()
+os.write(_w, b"\x01\x00" * 2049)          # whole frames, then 2 stray bytes
+_t0, _got = time.time(), 0
+while time.time() - _t0 < 3:
+    try:
+        _got += len(_q.get(timeout=0.5))
+    except _queue.Empty:
+        break
+_pump.stop()
+ok(_got > 20000, f"the stream flows on after a stray part-frame ({_got} bytes in 3 s)")
+
 # --- a stand-in PsionLX-Software folder, for the /lx/ routes --------------------
 import os
 import tempfile

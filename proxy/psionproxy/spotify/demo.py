@@ -77,10 +77,18 @@ class DemoService:
                 v = int(amp * math.sin(2 * math.pi * freq * phase / 44100))
                 frames.append(struct.pack("<hh", v, v))
                 phase += 1
-            try:
-                os.write(self._w, b"".join(frames))
-            except BlockingIOError:
-                time.sleep(0.02)
+            data = b"".join(frames)
+            while data and self.playing:
+                # Write it all: a full pipe takes part of a write (on Windows,
+                # any part), and a lost remainder would misalign every sample
+                # after it.
+                try:
+                    n = os.write(self._w, data)
+                except BlockingIOError:
+                    n = 0
+                data = data[n:]
+                if n == 0:
+                    time.sleep(0.02)
 
     def _tick(self):
         now = time.monotonic()
