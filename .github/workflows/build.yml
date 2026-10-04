@@ -4,15 +4,13 @@
 # a runner per system. librespot, the Spotify speaker, has no official builds,
 # so it is compiled here too, once per version, and cached.
 #
-# Runs for a v* tag, which is what a release is built from; by hand; and for
-# pushes to the branch this was developed on.
+# Runs for a v* tag, which is what a release is built from, and by hand.
 
 name: Windows and Debian builds
 
 on:
   push:
     tags: ["v*"]
-    branches: ["windows-debian"]
   workflow_dispatch:
 
 permissions:
