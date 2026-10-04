@@ -1,6 +1,6 @@
 # Acknowledgements and third-party material
 
-PsionNet is Copyright (C) 2026 Joshua Yeaman and is licensed under the GNU
+PsionNet is Copyright (C) 2026 Joshua Yewman and is licensed under the GNU
 General Public License, version 2 or later (`SPDX-License-Identifier:
 GPL-2.0-or-later`). See [LICENSE](LICENSE).
 

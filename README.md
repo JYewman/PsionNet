@@ -194,9 +194,9 @@ Spotify client was ever built for its 2005 ARM Linux. So the work is split:
   signed in to your account. It encodes what the speaker plays as 128 kbit/s
   MP3 and streams it over plain HTTP, and it answers the app's requests for
   your playlists, search results and cover art.
-* **On the netBook Pro**, the **Spotify** app (PROGRAMS → OTHER, in the full
-  PsionLX image) shows your Liked Songs and playlists, searches, and controls
-  playback. It plays the stream through the GStreamer already in Psion's
+* **On the netBook Pro**, the **Spotify** app (installed from PsionLX's
+  **Find new software**, then in PROGRAMS → OTHER) shows your Liked Songs and
+  playlists, searches, and controls playback. It plays the stream through the GStreamer already in Psion's
   image, and only while the netBook Pro is the speaker Spotify is using.
 
 Because the netBook Pro is an ordinary Connect speaker, the Spotify app on
@@ -212,8 +212,10 @@ your phone or Mac can also send music to it.
    on Spotify's sign-in page; approve it.
 3. Start the proxy. Within a few seconds the Spotify box reports the
    *netBook Pro* speaker online.
-4. On the netBook Pro, open **Spotify**. It finds PsionNet on the network by
-   itself; if it cannot, it asks for the Mac's address.
+4. On the netBook Pro, install **Spotify** from **Find new software** (TASKS)
+   if it is not there yet, then open it from PROGRAMS → OTHER. It finds
+   PsionNet on the network by itself; if it cannot, it asks for the Mac's
+   address.
 
 The speaker then signs in once more, on its own: the first time the proxy
 starts, librespot opens a Spotify page in your browser. If you are already
@@ -232,19 +234,19 @@ controls) cannot be reused for it. Both are remembered.
 
 ## Software for PsionLX
 
-The full PsionLX image adds a Spotify app, games, tools and Psion's Agfa fonts
-to Psion's own image. The same programs are in the **PsionLX-Software** folder
-of the RetroTechCollection archive, as packages for Psion's own package
-manager, so any PsionLX card can have them:
+The full PsionLX image adds games, tools, Psion's Agfa fonts and Find new
+software to Psion's own image. Those programs, and the Spotify app, are in the
+**PsionLX-Software** folder of the RetroTechCollection archive, as packages for
+Psion's own package manager, so any PsionLX card can have them:
 
 * `http://<this Mac>:8080/lx/install` is the installer described above.
 * `http://<this Mac>:8080/lx/software/...` hands the netBook Pro files from
   <https://archive.retrotechcollection.com/PsionLX-Software>, fetched over
   HTTPS and passed on byte for byte. It serves that one folder only.
-* On the netBook Pro, **Find new software** (TASKS on the full image, or
-  Software in PROGRAMS) lists everything with icons and descriptions, and
-  installs or removes it through Psion's ipkg. It asks for the root
-  password; PsionLX has none, so OK is enough.
+* On the netBook Pro, **Find new software**, on the TASKS screen where Psion
+  put it, lists everything with icons and descriptions, and installs or
+  removes it through Psion's ipkg. PsionLX's root password is empty, so it
+  asks for nothing; if a root password has been set, it asks for that.
 
 ## What does not work
 
@@ -281,7 +283,7 @@ XScale's load average about 2 while playing.
 
 **Before that, in the emulator and on this Mac:**
 
-* **The netBook Pro's Spotify app**, inside the PsionLX image, booted under
+* **The netBook Pro's Spotify app**, inside a PsionLX image, booted under
   QEMU with an emulated network, against `--spotify-demo`, a stand-in for
   Spotify with invented tracks and plain tones. It was opened from its
   PROGRAMS icon, found PsionNet on the network by itself, listed the library,

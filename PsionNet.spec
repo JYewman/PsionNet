@@ -87,7 +87,7 @@ app = BUNDLE(
         "LSMinimumSystemVersion": "11.0",
         "LSApplicationCategoryType": "public.app-category.utilities",
         "NSHumanReadableCopyright":
-            "Copyright (C) 2026 Joshua Yeaman. GPL-2.0-or-later. "
+            "Copyright (C) 2026 Joshua Yewman. GPL-2.0-or-later. "
             "Contains artwork from Reconnect (GPL-2.0-or-later), "
             "icons from Psion/Symbian EPOC software, librespot (MIT) "
             "and LAME via lameenc (LGPL-3.0-or-later).",
