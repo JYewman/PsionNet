@@ -17,6 +17,9 @@ _DEFAULTS = {
     "fidelity": "medium",
     "images": True,
     "geometry": "",
+    "lan_iface": "",             # network mode: the interface the proxy listens on
+    "spotify_client_id": "",     # the user's own Spotify developer app
+    "spotify_open": False,       # the Spotify section unfolded in the window
 }
 
 
@@ -27,6 +30,10 @@ def load() -> dict:
             stored = json.load(fh)
         if isinstance(stored, dict):
             data.update({k: v for k, v in stored.items() if k in _DEFAULTS})
+        # The netBook Pro's Windows CE "Direct Connection" option was removed:
+        # it negotiates PPP and then carries no traffic. Dial-up is the route.
+        if data.get("device_type") == "ce-direct":
+            data["device_type"] = "ce"
     except (OSError, ValueError):
         pass
     return data

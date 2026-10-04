@@ -19,6 +19,7 @@ import control
 import probe
 import resources
 import settings
+import spotify_login
 
 # Resolved at call time: frozen, the data lives outside the code archive.
 def _icons_dir():
@@ -50,6 +51,8 @@ class App(ttk.Frame):
         self.proxy = control.Runner("proxy")
         self.meter = probe.RateMeter()
         self.ports: list[probe.Port] = []
+        self.ifaces: list[probe.Iface] = []
+        self._login: spotify_login.Login | None = None
         self._ppp_log_pos = 0
         self.prefs = settings.load()
         # lsof costs ~110 ms and runs on the Tk thread, so it must not ride the
@@ -104,14 +107,14 @@ class App(ttk.Frame):
         title = ttk.Frame(header)
         title.grid(row=0, column=1, sticky="w")
         ttk.Label(title, text="PsionNet", font=("Helvetica", 17, "bold")).grid(row=0, column=0, sticky="w")
-        ttk.Label(title, text="Internet over the serial cable, for EPOC Release 5 devices",
+        ttk.Label(title, text="Internet for Psion devices, over the serial cable or your network",
                   foreground=MUTED).grid(row=1, column=0, sticky="w")
-        ttk.Label(title, text="Series 5mx  ·  Series 7  ·  netBook  ·  Revo",
+        ttk.Label(title, text="Series 5mx  ·  Series 7  ·  netBook  ·  Revo  ·  netBook Pro",
                   foreground=MUTED, font=("Helvetica", 10)).grid(row=2, column=0, sticky="w")
         row += 1
 
         # --- serial port ---
-        port_box = ttk.LabelFrame(self, text="  Serial port  ", padding=10)
+        port_box = self.port_box = ttk.LabelFrame(self, text="  Serial port  ", padding=10)
         port_box.grid(row=row, column=0, sticky="ew", pady=(0, 10))
         port_box.columnconfigure(1, weight=1)
         if self.icon("drive"):
@@ -133,7 +136,8 @@ class App(ttk.Frame):
         self._type_labels = {
             "Series 5mx / 7 / netBook / Revo": "epoc",
             "netBook Pro (CE, dial-up)": "ce",
-            "netBook Pro (CE, direct - does not work)": "ce-direct",
+            "netBook Pro (CE, network)": "ce-lan",
+            "netBook Pro (PsionLX, network)": "lx-lan",
         }
         self.type_box = ttk.Combobox(
             kind, state="readonly", width=32,
@@ -148,7 +152,6 @@ class App(ttk.Frame):
                                    font=("Helvetica", 10))
         self.type_note.grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 0))
         self.type_box.bind("<<ComboboxSelected>>", lambda e: self._type_changed())
-        self._type_changed()
         self.free_btn = ttk.Button(port_box, text="Quit Reconnect to free the port",
                                    command=self.free_port)
         row += 1
@@ -169,6 +172,13 @@ class App(ttk.Frame):
         self.link_btn = ttk.Button(link_box, text="Connect", width=12,
                                    command=self.toggle_link)
         self.link_btn.grid(row=0, column=2, rowspan=2, padx=(8, 0))
+        # Network mode: which of this Mac's networks the proxy listens on.
+        self.iface_row = ttk.Frame(link_box)
+        ttk.Label(self.iface_row, text="Listen on:").grid(row=0, column=0)
+        self.iface_box = ttk.Combobox(self.iface_row, state="readonly", width=40)
+        self.iface_box.grid(row=0, column=1, padx=(6, 0))
+        ttk.Button(self.iface_row, text="Refresh", width=9,
+                   command=self.refresh_ifaces).grid(row=0, column=2, padx=(8, 0))
         row += 1
 
         # --- proxy ---
@@ -196,6 +206,45 @@ class App(ttk.Frame):
         ttk.Checkbutton(opts, text="Images", variable=self.images).grid(row=0, column=2)
         row += 1
 
+        # --- Spotify, for the PsionLX app: one line that unfolds when clicked ---
+        self.spot_box = ttk.Frame(self)
+        self.spot_box.grid(row=row, column=0, sticky="ew", pady=(0, 10))
+        self.spot_box.columnconfigure(0, weight=1)
+        hand = "pointinghand" if sys.platform == "darwin" else "hand2"
+        head = ttk.Frame(self.spot_box, cursor=hand)
+        head.grid(row=0, column=0, sticky="ew")
+        head.columnconfigure(1, weight=1)
+        self.spot_arrow = ttk.Label(head, text="\u25b8", width=2, cursor=hand)
+        self.spot_arrow.grid(row=0, column=0, sticky="w")
+        ttk.Label(head, text="Spotify for the netBook Pro (PsionLX)", cursor=hand,
+                  font=("Helvetica", 13, "bold")).grid(row=0, column=1, sticky="w")
+        self.spot_summary = ttk.Label(head, text="", foreground=MUTED, cursor=hand)
+        self.spot_summary.grid(row=0, column=2, sticky="e")
+        for w in (head, *head.winfo_children()):
+            w.bind("<Button-1>", lambda e: self.toggle_spotify_section())
+        self.spot_body = ttk.Frame(self.spot_box, padding=(22, 8, 0, 0))
+        self.spot_body.grid(row=1, column=0, sticky="ew")
+        self.spot_body.columnconfigure(1, weight=1)
+        ttk.Label(self.spot_body, text="Client ID:").grid(row=0, column=0, sticky="w")
+        self.client_id = tk.StringVar(value=self.prefs.get("spotify_client_id", ""))
+        ttk.Entry(self.spot_body, textvariable=self.client_id, width=36).grid(
+            row=0, column=1, sticky="ew", padx=(6, 0))
+        self.spot_btn = ttk.Button(self.spot_body, text="Log in", width=12,
+                                   command=self.toggle_spotify_login)
+        self.spot_btn.grid(row=0, column=2, padx=(8, 0))
+        self.spot_state = ttk.Label(self.spot_body, text="", foreground=MUTED)
+        self.spot_state.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        ttk.Label(self.spot_body, foreground=MUTED, font=("Helvetica", 10), justify="left",
+                  text=("Needs Spotify Premium and your own Client ID: create an app at "
+                        "developer.spotify.com/dashboard,\nadd the redirect URI "
+                        "http://127.0.0.1:8897/callback, choose Web API, and paste its "
+                        "Client ID here.")).grid(row=2, column=0, columnspan=3,
+                                                 sticky="w", pady=(6, 0))
+        self._spot_row = row
+        self.spot_open = bool(self.prefs.get("spotify_open", False))
+        self._show_spotify_section()
+        row += 1
+
         # --- logs ---
         tabs = ttk.Notebook(self)
         tabs.grid(row=row, column=0, sticky="nsew")
@@ -208,6 +257,8 @@ class App(ttk.Frame):
         self.status.grid(row=row, column=0, sticky="ew", pady=(8, 0))
 
         self.refresh_ports()
+        self.refresh_ifaces()
+        self._type_changed()
 
     def _log_tab(self, notebook: ttk.Notebook, label: str) -> tk.Text:
         frame = ttk.Frame(notebook)
@@ -263,6 +314,106 @@ class App(ttk.Frame):
             self.port_menu.current(best)
         self._update_port_note()
 
+    def refresh_ifaces(self) -> None:
+        self.ifaces = probe.lan_interfaces()
+        self.iface_box["values"] = [i.label for i in self.ifaces]
+        if not self.ifaces:
+            self.iface_box.set("")
+            return
+        if self.iface_box.get() not in self.iface_box["values"]:
+            want = self.prefs.get("lan_iface") or probe.uplink_interface()
+            best = next((n for n, i in enumerate(self.ifaces) if i.name == want), 0)
+            self.iface_box.current(best)
+
+    def selected_iface(self) -> probe.Iface | None:
+        idx = self.iface_box.current()
+        if 0 <= idx < len(self.ifaces):
+            return self.ifaces[idx]
+        return None
+
+    # --- Spotify -----------------------------------------------------------
+
+    def toggle_spotify_login(self) -> None:
+        if spotify_login.logged_in():
+            if messagebox.askyesno("Log out of Spotify?",
+                                   "PsionNet will forget its Spotify login. The netBook "
+                                   "Pro's Spotify app stops working until you log in "
+                                   "again."):
+                spotify_login.log_out()
+            return
+        cid = self.client_id.get().strip()
+        if len(cid) < 16:
+            messagebox.showinfo(
+                "Client ID needed",
+                "Paste your Spotify app's Client ID first.\n\n"
+                "Create one at developer.spotify.com/dashboard: any name, the "
+                "redirect URI http://127.0.0.1:8897/callback, and Web API ticked. "
+                "It needs a Spotify Premium account.")
+            return
+        self.prefs["spotify_client_id"] = cid
+        settings.save(self.prefs)
+        self._login = spotify_login.Login(cid)
+        self._login.start()
+        self._spotify_show("Waiting for you to sign in in the browser...", WARN, "signing in...")
+
+    def toggle_spotify_section(self) -> None:
+        self.spot_open = not self.spot_open
+        self._show_spotify_section()
+
+    def _show_spotify_section(self) -> None:
+        self.spot_arrow.configure(text="\u25be" if self.spot_open else "\u25b8")
+        if self.spot_open:
+            self.spot_body.grid()
+        else:
+            self.spot_body.grid_remove()
+
+    def _spotify_show(self, detail: str, colour: str, summary: str) -> None:
+        """The full state inside the section, a short one on its folded line."""
+        self.spot_state.configure(text=detail, foreground=colour)
+        self.spot_summary.configure(text=summary, foreground=colour)
+
+    def _spotify_tick(self) -> None:
+        if self._login is not None:
+            try:
+                ok, msg = self._login.results.get_nowait()
+            except Exception:
+                ok = None
+            if ok is not None:
+                self._login = None
+                if not ok:
+                    messagebox.showerror("Spotify", msg)
+        if self._login is not None:
+            return
+        logged = spotify_login.logged_in()
+        self.spot_btn.configure(text="Log out" if logged else "Log in")
+        if not logged:
+            self._spotify_show("Not logged in.", MUTED,
+                               "not logged in" if self.client_id.get().strip()
+                               else "not set up \u2014 click to set up")
+            return
+        st = spotify_login.status()
+        if not self.proxy.running or st.get("stale"):
+            self._spotify_show("Logged in. Start the proxy to bring the netBook Pro speaker "
+                               "online.", MUTED, "logged in \u00b7 proxy stopped")
+            return
+        bits = [f"Logged in as {st.get('user')}" if st.get("user") else "Logged in"]
+        if st.get("state") == "ready":
+            bits.append(f"speaker \u201c{st.get('device', 'netBook Pro')}\u201d online")
+            colour, summary = OK, "speaker online"
+        elif st.get("state") == "login":
+            bits.append(st.get("message") or "sign in to Spotify in the browser")
+            colour, summary = WARN, "sign in, in the browser"
+        elif st.get("state") == "error":
+            bits.append(st.get("message") or "the speaker could not start")
+            colour, summary = BAD, "speaker not working \u2014 click for details"
+        else:
+            bits.append("starting the speaker...")
+            colour, summary = WARN, "starting..."
+        if st.get("listeners"):
+            bits.append(f"{st['listeners']} listening")
+            summary += f" \u00b7 {st['listeners']} listening"
+        self._spotify_show("   ·   ".join(bits), colour, summary)
+
     def selected_port(self) -> probe.Port | None:
         idx = self.port_menu.current()
         if 0 <= idx < len(self.ports):
@@ -297,14 +448,40 @@ class App(ttk.Frame):
             self.type_note.configure(text=(
                 "Dial-up connection via a modem on COM1, 19200. "
                 "Turn PC Connection OFF."))
-        elif kind == "ce-direct":
+        elif kind == "ce-lan":
             self.type_note.configure(text=(
-                "Direct Connection negotiates PPP but carries no traffic on "
-                "this device. Use the dial-up option."))
+                "The netBook Pro joins your network with its own card. "
+                "Set Internet Explorer's proxy to this Mac."))
+        elif kind == "lx-lan":
+            self.type_note.configure(text=(
+                "PsionLX on your network. Run the command below on it once; after "
+                "that Firefox, Spotify and Find new software find PsionNet by themselves."))
         else:
             self.type_note.configure(text=(
                 "Connection type: Direct, 115200. "
                 "Turn Link to desktop OFF."))
+        if hasattr(self, "iface_row"):
+            self._apply_mode()
+
+    def _apply_mode(self) -> None:
+        """Serial devices use the port and the PPP link; network devices use
+        neither, only the proxy on one of this Mac's LAN addresses."""
+        network = control.is_network(self.selected_type())
+        state = "disabled" if network else "readonly"
+        self.port_menu.configure(state=state)
+        self.port_box.configure(text="  Device  " if network else "  Serial port  ")
+        if network:
+            self.iface_row.grid(row=2, column=1, columnspan=2, sticky="w", pady=(8, 0))
+            self.link_btn.configure(state="disabled")
+        else:
+            self.iface_row.grid_remove()
+            self.link_btn.configure(state="normal")
+        if self.selected_type() == "lx-lan":
+            self.spot_box.grid()
+        else:
+            self.spot_box.grid_remove()
+        if self.proxy.running:
+            self.log(self.proxy_text, ["-- device type changed: restart the proxy to apply"])
 
     def free_port(self) -> None:
         ok, msg = control.stop_reconnect()
@@ -312,6 +489,8 @@ class App(ttk.Frame):
         self.after(2000, self.refresh_ports)
 
     def toggle_link(self) -> None:
+        if control.is_network(self.selected_type()):
+            return
         if control.pppd_running():
             self.link_btn.configure(state="disabled")
             ok, msg = control.ppp_stop()
@@ -329,7 +508,7 @@ class App(ttk.Frame):
                 "pppd would open it anyway (root ignores the exclusive-use lock) "
                 "and the two would corrupt each other's data. Free the port first.")
             return
-        if not probe.ppp_config_installed():
+        if not probe.ppp_config_installed(self.selected_type()):
             if not messagebox.askyesno(
                     "Set up PPP?",
                     "The PPP configuration is not installed yet.\n\n"
@@ -363,11 +542,28 @@ class App(ttk.Frame):
         if self.proxy.running:
             self.proxy.stop()
             return
-        link = probe.link_state()
-        # Loopback when there is no link: this proxy strips TLS, so it must
-        # never be offered to the LAN.
-        host = link.local_ip or "127.0.0.1"
-        argv = control.proxy_argv(host, 8080, self.fidelity.get(), self.images.get())
+        kind = self.selected_type()
+        if control.is_network(kind):
+            iface = self.selected_iface()
+            if iface is None:
+                messagebox.showwarning(
+                    "No network",
+                    "This Mac is not on a private network, so there is nowhere for "
+                    "the netBook Pro to reach the proxy.")
+                return
+            # The LAN address, served only to that network. This proxy strips
+            # TLS, so it is never offered beyond the network it sits on.
+            argv = control.proxy_argv(iface.ip, 8080, self.fidelity.get(),
+                                      self.images.get(), allow=iface.network,
+                                      spotify=(kind == "lx-lan"), software=(kind == "lx-lan"))
+            self.prefs["lan_iface"] = iface.name
+            settings.save(self.prefs)
+        else:
+            link = probe.link_state()
+            # Loopback when there is no link: this proxy strips TLS, so it must
+            # never be offered to the LAN.
+            host = link.local_ip or "127.0.0.1"
+            argv = control.proxy_argv(host, 8080, self.fidelity.get(), self.images.get())
         self.proxy.start(argv)
 
     # --- polling -----------------------------------------------------------
@@ -409,8 +605,20 @@ class App(ttk.Frame):
     def _tick_slow(self) -> None:
         link = probe.link_state()
         rate_in, rate_out = self.meter.update(link.bytes_in, link.bytes_out)
+        network = control.is_network(self.selected_type())
+        iface = self.selected_iface() if network else None
 
-        if link.up:
+        if network:
+            self.link_icon.configure(image=self.icon("psion_tinted") or self.icon("psion"))
+            if iface is not None:
+                self.link_state.configure(text="On your network", foreground=OK)
+                self.link_detail.configure(
+                    text=f"The proxy listens on {iface.ip}, for devices on {iface.network}")
+            else:
+                self.link_state.configure(text="No private network", foreground=BAD)
+                self.link_detail.configure(text="Join this Mac to the netBook Pro's network")
+            self.link_btn.configure(text="Connect")
+        elif link.up:
             port = self.selected_port()
             if port is not None and self.prefs.get("last_good_device") != port.device:
                 self.prefs["last_good_device"] = port.device
@@ -450,6 +658,20 @@ class App(ttk.Frame):
             self.proxy_btn.configure(text="Start")
 
         bits = []
+        if network:
+            if iface is not None and self.selected_type() == "lx-lan":
+                # After this, Firefox, Spotify and Find new software find PsionNet themselves.
+                bits.append(f"PsionLX, once, as root:  wget -O - http://{iface.ip}:8080/lx/install | sh")
+            elif iface is not None:
+                bits.append(f"netBook Pro: set the browser proxy to {iface.ip} port 8080")
+            self.status.configure(text="   ·   ".join(bits))
+            if self.selected_type() == "lx-lan":
+                self._spotify_tick()
+            import time
+            if time.time() - self._holders_checked > 10:
+                self.refresh_ports(with_holders=True)
+            self.after(POLL_SLOW, self._tick_slow)
+            return
         bits.append("forwarding on" if probe.forwarding_enabled() else "forwarding OFF")
         uplink = probe.uplink_interface()
         if uplink:
@@ -473,12 +695,16 @@ class App(ttk.Frame):
 
     def _on_close(self) -> None:
         port = self.selected_port()
+        iface = self.selected_iface()
         self.prefs.update({
             "device": port.device if port else "",
             "device_type": self.selected_type(),
             "fidelity": self.fidelity.get(),
             "images": bool(self.images.get()),
             "geometry": self.master.winfo_geometry(),
+            "lan_iface": iface.name if iface else self.prefs.get("lan_iface", ""),
+            "spotify_client_id": self.client_id.get().strip(),
+            "spotify_open": self.spot_open,
         })
         settings.save(self.prefs)
         if self.proxy.running:

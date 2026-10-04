@@ -20,6 +20,17 @@ PY=${PYTHON:-$(command -v python3)}
   "$PY" -m pip install --quiet --disable-pip-version-check pyinstaller
 }
 
+# The netBook Pro's Spotify: lameenc encodes the stream, librespot plays it.
+"$PY" -c 'import lameenc' 2>/dev/null || {
+  echo "Installing lameenc..."
+  "$PY" -m pip install --quiet --disable-pip-version-check lameenc
+}
+command -v librespot >/dev/null 2>&1 || [ -x /opt/homebrew/bin/librespot ] \
+  || [ -x /usr/local/bin/librespot ] || {
+  echo "NOTE: librespot is not installed, so this build cannot play Spotify on the"
+  echo "      netBook Pro. To include it:  brew install librespot"
+}
+
 # Icon: iconutil only understands the standard iconset names and silently
 # writes anything else into the .icns as a garbage element.
 mkdir -p build_icon

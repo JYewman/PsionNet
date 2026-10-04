@@ -10,6 +10,41 @@ BIND_HOST = "10.0.2.1"   # the Mac's PPP-side address.
                          # service to everyone on it.
 BIND_PORT = 8080
 
+# --- network (LAN) mode --------------------------------------------------------
+# A serial device reaches the proxy over its own PPP link, where nothing else
+# can. A netBook Pro with a network card is on the LAN instead, so the proxy
+# binds the Mac's LAN address -- which every machine on that network can reach.
+# ALLOWED_NETS limits who may use it: loopback always, plus these networks.
+# Empty means no restriction, which is only right for the PPP address.
+ALLOWED_NETS: list = []        # ipaddress.IPv4Network objects
+SPOTIFY = False                # serve the Spotify bridge for the PsionLX app
+SPOTIFY_DEMO = False           # canned results and a test tone, for testing
+DISCOVERY_PORT = 8899          # UDP: the PsionLX app asks "PSIONNET?" here
+SOFTWARE = False               # serve PsionLX-Software, for "Find new software"
+SOFTWARE_SRC = "https://archive.retrotechcollection.com/PsionLX-Software"
+
+
+def apply_software_args(enabled: bool, src: str = "") -> None:
+    """--software, and --software-src (a URL, or a local folder for testing)."""
+    global SOFTWARE, SOFTWARE_SRC
+    SOFTWARE = bool(enabled or src)
+    if src:
+        SOFTWARE_SRC = src
+
+
+def apply_network_args(allow: str, spotify: bool, demo: bool) -> None:
+    """Shared by run.py and the app's --run-proxy path."""
+    import ipaddress
+    global ALLOWED_NETS, SPOTIFY, SPOTIFY_DEMO
+    nets = []
+    for part in (allow or "").split(","):
+        part = part.strip()
+        if part:
+            nets.append(ipaddress.ip_network(part, strict=False))
+    ALLOWED_NETS = nets
+    SPOTIFY = bool(spotify)
+    SPOTIFY_DEMO = bool(demo)
+
 # --- byte budgets -----------------------------------------------------------
 # Raised from 20k/24k. Wire time says 110 KB is a 10 s page, but Psion-side
 # RENDER time is unmeasured, so these sit deliberately below the wire ceiling

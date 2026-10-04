@@ -134,10 +134,32 @@ def _raw_url() -> str:
     return urlunsplit(urlsplit(raw)._replace(fragment=""))
 
 
+def client_allowed(remote: str) -> bool:
+    """May this address use the proxy?
+
+    In network mode the proxy listens on the Mac's LAN address, where anything
+    on the network can reach it, and it is an open forward proxy that strips
+    TLS -- so only loopback and the networks in config.ALLOWED_NETS are served.
+    With no networks configured (the serial PPP address, which only the Psion
+    on the end of the cable can reach) everyone who can connect is allowed.
+    """
+    if not config.ALLOWED_NETS:
+        return True
+    import ipaddress
+    try:
+        addr = ipaddress.ip_address((remote or "").split("%")[0])
+    except ValueError:
+        return False
+    return addr.is_loopback or any(addr in net for net in config.ALLOWED_NETS)
+
+
 @app.before_request
 def _guard():
     import time
     g._t0 = time.time()
+    if not client_allowed(request.remote_addr):
+        _log(f"REFUSED {request.remote_addr} {request.method} {_raw_url()[:100]}")
+        return _respond(b"PsionNet: not allowed from this address.\n", "text/plain", 403)
     # Resolve the device profile up front. render() reads it off g, and the
     # proxy's own pages are rendered before _html_response ever runs.
     _client_profile()
@@ -156,9 +178,12 @@ def proxy(path):
     raw = _raw_url()
     parts = urlsplit(raw)
 
-    # Locally-served pages. 'http://psion/...' is our own namespace.
+    # Locally-served pages. 'http://psion/...' is our own namespace, and so is
+    # this machine's own address, which a network device may use directly.
     host = (parts.hostname or "").lower()
-    if parts.scheme not in ("http", "https") or host in ("psion", "", "10.0.2.1", "localhost"):
+    if (parts.scheme not in ("http", "https")
+            or host in ("psion", "psionnet", "", "10.0.2.1", "localhost",
+                        config.BIND_HOST)):
         return _local(parts)
 
     if path.startswith("i/") or parts.path.startswith("/i/"):
@@ -178,9 +203,42 @@ def proxy(path):
     return _proxy_remote(raw, parts)
 
 
+def _software(route: str) -> Response:
+    """PsionLX's software library, untouched, and its installer (software.py)."""
+    if not config.SOFTWARE:
+        return _respond(b"PsionLX software is off in PsionNet. Choose \"netBook Pro "
+                        b"(PsionLX, network)\" there and start the proxy again.\n",
+                        "text/plain; charset=utf-8", 404)
+    from . import software
+    try:
+        if route == "/lx/install":
+            where = software.reach(request.headers.get("Host", ""), config.BIND_HOST,
+                                   config.BIND_PORT)
+            return _respond(software.install_script(where),
+                            "text/plain; charset=utf-8", 200, {"Cache-Control": "no-cache"})
+        if route.startswith("/lx/software/"):
+            body, ctype = software.fetch(route[len("/lx/software/"):])
+            return _respond(body, ctype, 200, {"Cache-Control": "no-cache"})
+    except software.NotFound:
+        pass
+    except software.Unavailable as exc:
+        return _respond(f"PsionNet could not fetch it: {exc}.\n".encode(),
+                        "text/plain; charset=utf-8", 502)
+    return _respond(b"Not in PsionLX-Software.\n", "text/plain; charset=utf-8", 404)
+
+
 def _local(parts) -> Response:
     route = parts.path or "/"
     query = parse_qs(parts.query)
+    if route.startswith("/lx/"):
+        return _software(route)
+    if route.startswith("/spotify/"):
+        if not config.SPOTIFY:
+            return _respond(b"ERR\tSpotify is off in PsionNet. Choose \"netBook Pro (PsionLX, "
+                            b"network)\" there and start the proxy again.\n",
+                            "text/plain; charset=utf-8", 404)
+        from .spotify import routes
+        return routes.handle(route, query, request, _respond)
     if route.rstrip("/") in ("/search", ""):
         q = (query.get("q") or [""])[0]
         if route.rstrip("/") == "/search":
@@ -387,6 +445,23 @@ def main() -> None:
     WSGIRequestHandler.protocol_version = "HTTP/1.0"
 
     host = config.BIND_HOST
+    if config.ALLOWED_NETS:
+        # Network mode: the LAN address is either here or it is not; there is
+        # no link that might come up later, so a failure is an error.
+        if not _ppp_is_up():
+            print(f"error: {host} is not an address of this Mac.")
+            raise SystemExit(1)
+        nets = ", ".join(str(n) for n in config.ALLOWED_NETS)
+        print(f"PsionNet proxy listening on {host}:{config.BIND_PORT} (network mode)")
+        print(f"Serving only this Mac and {nets}.")
+        print(f"Set the device's browser proxy to {host}, port {config.BIND_PORT}.")
+        from . import discovery
+        discovery.start(host, config.BIND_PORT, config.ALLOWED_NETS)
+        if config.SPOTIFY:
+            from .spotify import service
+            service.start()
+        app.run(host=host, port=config.BIND_PORT, threaded=True, debug=False)
+        return
     if not _ppp_is_up():
         # ppp0 only gets its addresses once the Psion completes IPCP, so
         # binding 10.0.2.1 fails whenever the link is down -- which is most of

@@ -17,8 +17,14 @@ Probe results from a netBook Pro (Mozilla/4.0 compatible; MSIE 6.0; Windows CE):
 
 So CE needs the same image handling as EPOC and almost nothing else: it wants
 TLS terminated, and then to be left alone.
+
+The PsionLX profile is the same netBook Pro running Linux: Firefox 1.0, which
+renders PNG and far more CSS than Pocket IE but still predates everything a
+modern stylesheet is made of, and has TLS 1.0 at best. It reaches the proxy
+over the LAN rather than a serial link.
 """
 
+import re
 from dataclasses import dataclass, field
 
 
@@ -63,8 +69,29 @@ CE = Profile(
     budget_css=48_000,             # ~25 s, after filter_for_ie6 has run
 )
 
-ALL = {p.key: p for p in (EPOC, CE)}
+LX = Profile(
+    key="lx",
+    name="Psion netBook Pro (PsionLX, Firefox 1.0)",
+    charset="utf-8",
+    downgrade_text=False,
+    keep_css=True,
+    strict_html32=False,
+    doctype='<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">',
+    # Gecko 1.7 renders far more CSS than Pocket IE, but not the parts modern
+    # pages are built from -- no flex, grid, calc(), rem or custom properties
+    # -- so the same IE6-subset filter is the right one. The link is a LAN, not
+    # a 19200 modem, so the budgets are set by what a 400 MHz XScale lays out
+    # comfortably rather than by wire time.
+    budget_html_hard=400_000,
+    budget_css=96_000,
+)
+
+ALL = {p.key: p for p in (EPOC, CE, LX)}
 DEFAULT = EPOC
+
+# Firefox 1.0 / Gecko 1.7 as PsionLX ships it. Deliberately narrow: a modern
+# Firefox says "Firefox/1xx.0" and must not match "Firefox/1.".
+_LX_UA = re.compile(r"\bfirefox/1\.\d(?![\d])|\brv:1\.[0-8](\.\d+)*\) gecko/")
 
 
 def for_user_agent(ua: str) -> Profile:
@@ -82,4 +109,6 @@ def for_user_agent(ua: str) -> Profile:
         return CE
     if "epoc" in low or "stnc-wtl" in low:
         return EPOC
+    if _LX_UA.search(low):
+        return LX
     return DEFAULT

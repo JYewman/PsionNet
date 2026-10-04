@@ -8,8 +8,8 @@ PsionNet is under the GPL because it contains and derives from artwork taken
 from Reconnect. That is the reason for the licence choice, and it is stated
 here rather than buried.
 
-PsionNet is not affiliated with Reconnect, Psion, Symbian or Apple, and is not
-endorsed by any of them.
+PsionNet is not affiliated with Reconnect, Psion, Symbian, Spotify or Apple,
+and is not endorsed by any of them. Spotify is a trademark of Spotify AB.
 
 ## Reconnect
 
@@ -80,3 +80,23 @@ Not vendored. They are installed from `proxy/requirements.txt`, or bundled into
 | Pillow | MIT-CMU (HPND-style) |
 | certifi | MPL-2.0 |
 | httpx (optional) | BSD-3-Clause |
+| lameenc, which contains LAME | LGPL-3.0-or-later (LAME itself LGPL-2.0-or-later) |
+
+lameenc is loaded as a separate shared module, so it can be replaced in the
+built app. PsionNet's own code is GPL-2.0-or-later; combined with an
+LGPL-3.0 library, the distributed app as a whole falls under GPL-3.0-or-later
+terms, which "or later" permits.
+
+## librespot
+
+    librespot: an open-source client library for Spotify
+    Copyright (c) 2015 Paul Lietar, and the librespot contributors
+    https://github.com/librespot-org/librespot
+    MIT License
+
+`PsionNet.app` bundles the `librespot` program, unmodified, as built by
+Homebrew, and runs it as a separate process: it is the *netBook Pro* Spotify
+speaker. Its licence travels with it in the app, at
+`Contents/Resources/licenses/librespot/LICENSE`, beside lameenc's. It is
+statically linked with the Rust libraries it is built from, each under its own
+licence; librespot's `Cargo.lock` lists them.

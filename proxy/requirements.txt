@@ -9,3 +9,8 @@ pillow>=12.0
 
 # Optional but recommended:
 httpx[http2]>=0.28
+
+# The Spotify bridge for the netBook Pro running PsionLX (--spotify):
+# lameenc encodes the audio as MP3. It also needs librespot, which is not a
+# Python package:  brew install librespot
+lameenc>=1.8

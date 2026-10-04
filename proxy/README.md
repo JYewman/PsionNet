@@ -1,7 +1,9 @@
 # PsionNet proxy
 
-An HTTPS-terminating, downgrading HTTP proxy for Psion hardware. It serves two
-quite different devices and shapes its output to whichever one is asking.
+An HTTPS-terminating, downgrading HTTP proxy for Psion hardware. It serves
+three quite different browsers and shapes its output to whichever one is
+asking. For the netBook Pro running PsionLX it also carries a Spotify bridge;
+see [Spotify](#spotify).
 
 ## What it does
 
@@ -30,11 +32,47 @@ All fields must be filled or Web rejects the settings as incomplete.
 
 `http://psion/` is the proxy's own home page and search form.
 
+### Network mode
+
+For a netBook Pro on the LAN rather than the serial cable:
+
+```sh
+python3 proxy/run.py --host 192.168.1.4 --allow 192.168.1.0/24
+python3 proxy/run.py --host 192.168.1.4 --allow 192.168.1.0/24 --spotify
+python3 proxy/run.py --host 127.0.0.1 --allow 127.0.0.1/32 --spotify-demo
+```
+
+`--host` must be one of this Mac's own addresses; the proxy exits if it is not.
+`--allow` takes comma-separated networks. With it, the proxy serves loopback
+and those networks only, refusing everyone else with a 403, and answers
+discovery broadcasts (`PSIONNET?` on UDP 8899) from the same networks with
+`PSIONNET <host> <port>`. Without `--allow`, as on the serial link, nothing is
+filtered, because only the device on the end of the cable can reach the PPP
+address.
+
+`--spotify` starts the Spotify bridge. `--spotify-demo` starts a stand-in with
+five canned tracks and generated tones, so the whole path can be tested with
+no Spotify account and no librespot.
+
+`--software` serves PsionLX's software library (`software.py`):
+
+| Request | Reply |
+|---|---|
+| `/lx/software/<file>` | that file of `https://archive.retrotechcollection.com/PsionLX-Software`, byte for byte |
+| `/lx/install` | its `install.sh`, with the address the device used to reach PsionNet filled in |
+
+The proxy's usual rewriting of pages and images would ruin a package, so this
+is a separate route, and it serves that one folder: names are checked, `..`
+and hidden files are refused, and nothing above the folder is reachable. The
+lists are cached for a minute. `--software-src` points it at another URL, or
+at a local folder to test a feed before it is uploaded.
+
 ## Tests
 
 ```sh
 python3 proxy/tests/test_units.py    # transforms, offline
 python3 proxy/tests/test_wire.py     # end-to-end, hits the real network
+python3 proxy/tests/test_network.py  # network mode, discovery, Spotify (demo)
 ```
 
 `test_wire.py` drives the proxy with the exact bytes a Series 7 sends
@@ -48,18 +86,26 @@ outside the ROM's element table.
 The proxy picks a profile from the User-Agent. There is no setting to change
 and nothing to configure on the device.
 
-| | Series 7 / 5mx / netBook / Revo | netBook Pro |
-|---|---|---|
-| OS | EPOC Release 5 | Windows CE 4.2 .NET |
-| Browser | STNC WTL 2.0, in ROM | Pocket Internet Explorer |
-| User-Agent | `EPOC32-WTL/2.0 (VGA)` | `Mozilla/4.0 (compatible; MSIE 6.0; Windows CE)` |
-| Output | HTML 3.2 | HTML 4.01 Transitional |
-| Charset | ISO-8859-1, flattened | UTF-8, untouched |
-| CSS | stripped entirely | filtered to the IE6 subset |
-| `class` / `id` | stripped | kept where a retained rule uses them |
-| Images | non-interlaced GIF, baseline JPEG | same, PNG fails on both |
-| Link speed | 115200, about 11 KB/s | 19200, about 1.9 KB/s |
-| Byte budget | 64 KB | 192 KB |
+| | Series 7 / 5mx / netBook / Revo | netBook Pro | netBook Pro, PsionLX |
+|---|---|---|---|
+| OS | EPOC Release 5 | Windows CE 4.2 .NET | Psion's Linux, 2005 |
+| Browser | STNC WTL 2.0, in ROM | Pocket Internet Explorer | Firefox 1.0 (Gecko 1.7) |
+| User-Agent | `EPOC32-WTL/2.0 (VGA)` | `Mozilla/4.0 (compatible; MSIE 6.0; Windows CE)` | `... rv:1.7.x) Gecko/... Firefox/1.0` |
+| Output | HTML 3.2 | HTML 4.01 Transitional | HTML 4.01 Transitional |
+| Charset | ISO-8859-1, flattened | UTF-8, untouched | UTF-8, untouched |
+| CSS | stripped entirely | filtered to the IE6 subset | filtered to the IE6 subset |
+| `class` / `id` | stripped | kept where a retained rule uses them | as CE |
+| Images | non-interlaced GIF, baseline JPEG | same, PNG fails on both | GIF and JPEG, as the others |
+| Link speed | 115200, about 11 KB/s | 19200, about 1.9 KB/s | the LAN |
+| Byte budget | 64 KB | 192 KB | 400 KB, CSS 96 KB |
+
+PsionLX's Firefox 1.0 speaks TLS 1.0 at best, which no modern site accepts,
+so it needs the proxy as much as the others do. Gecko 1.7 renders more CSS
+than Pocket IE, but not what modern pages are built from (flex, grid,
+`calc()`, `rem`, custom properties), so it gets the same filter. Its budgets
+are set by what a 400 MHz XScale lays out comfortably, not by wire time. The
+User-Agent match is deliberately narrow: `Firefox/1.x`, or Gecko `rv:1.0` to
+`rv:1.8`, never a modern `Firefox/128.0`.
 
 An unknown User-Agent gets the EPOC profile. Strict output is valid input for
 a richer browser, so guessing that way costs fidelity; guessing the other way
@@ -231,14 +277,66 @@ Measured and rejected, not skipped for effort:
 - **Spacer GIFs and bgcolor border sandwiches.** The signature 1996-99
   techniques, all specifically broken on ER5: empty cells lose their background.
 
+## Spotify
+
+`psionproxy/spotify/` is the Mac half of Spotify on the netBook Pro running
+PsionLX. The netBook Pro half is a GTK 2.4 program in the PsionLX image,
+`psionnet-spotify`.
+
+```
+ Spotify  <--  librespot (Connect speaker "netBook Pro")  -- raw PCM -->  Pump
+                                                                           |
+ netBook Pro  <--  HTTP /spotify/stream.mp3  <--  Broadcaster  <--  MP3 128k
+      |
+      +-- HTTP /spotify/status, /playlists, /play ...  -->  Web API (PKCE)
+```
+
+- `webapi.py`: Spotify's Web API with the user's own Client ID and a PKCE
+  login (no client secret). Tokens refresh themselves and are stored 0600.
+- `librespot.py`: runs `librespot --backend pipe --format S16` from cached
+  credentials. They come from librespot's own browser sign-in, run once as a
+  separate process: Spotify refuses a speaker signed in with a third-party
+  Client ID's token ("could not initialize spirc: Login request was denied:
+  INVALID_CREDENTIALS"), and librespot prints its sign-in link on stdout,
+  which in the speaker is the audio. Refused credentials are dropped and the
+  sign-in runs again, once per start, never in a loop. Restarted with backoff
+  if it dies.
+- `audio.py`: librespot writes PCM as fast as the pipe takes it and counts its
+  playback position from what it has written, so the pump reads at exactly
+  real time, and fills gaps with silence so the device's GStreamer 0.8 is
+  never starved. LAME (via lameenc) encodes 128 kbit/s MP3, comfortable for
+  libmad on a 400 MHz XScale. The stream is cut into whole MP3 frames, so a
+  listener joining, or losing chunks by falling behind, never starts
+  mid-frame.
+- `routes.py`: the app's API, plain text, one record per line, fields
+  separated by TABs: easy to parse in C on a 2005 userspace.
+
+| Request | Reply |
+|---|---|
+| `/spotify/hello` | `state` (ready, login, starting, error), `message` |
+| `/spotify/status` | `playing`, `here`, `device`, `title`, `artist`, `album`, `art`, `progress`, `duration`, `volume` ... |
+| `/spotify/playlists` | Liked Songs first, then the user's playlists |
+| `/spotify/tracks?uri=` | the tracks of a playlist, an album, or `spotify:liked` |
+| `/spotify/search?q=&type=track\|album\|playlist` | matching rows |
+| `/spotify/play?uri=&context=` | play a track within its playlist or album |
+| `/spotify/pause`, `resume`, `next`, `previous`, `volume?v=0..100` | `OK` |
+| `/spotify/stream.mp3` | the audio, never-ending |
+| `/spotify/art?u=&s=64` | a cover as a small baseline JPEG, Spotify's image hosts only |
+
+Every reply starts `OK`, or `ERR<TAB>message` that the app shows as it is.
+Requests other than `hello`, the stream and the art need an
+`X-PsionNet-Client` header, which the app sends and a web page in the
+device's browser cannot.
+
 ## Dependencies
 
 ```sh
 pip install -r requirements.txt
 ```
 
-Flask, requests, BeautifulSoup and Pillow. `PsionNet.app` bundles all of them,
-so the app itself needs nothing installed.
+Flask, requests, BeautifulSoup and Pillow; lameenc for Spotify, plus
+`brew install librespot`. `PsionNet.app` bundles all of them, so the app
+itself needs nothing installed.
 
 `httpx[http2]` is optional but recommended. Measured interleaved on one IP
 against `lite.duckduckgo.com` with an identical User-Agent: `requests` was

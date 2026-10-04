@@ -1,17 +1,27 @@
 # PsionNet control panel
 
-One window for both halves of PsionNet: the PPP link and the downgrading proxy.
+One window for PsionNet: the PPP link, the downgrading proxy, and the
+netBook Pro's Spotify.
 
 ## Supported devices
 
-Two families, picked from the **Device** menu.
+Picked from the **Device** menu:
 
-The **Psion netBook Pro** runs Windows CE 4.2 .NET rather than EPOC. It uses
-the same serial cable, but connects as **dial-up to an emulated modem** at
-19200 baud rather than as a direct link, so it has its own peer profile. Its
-Direct Connection mode is a dead end and is labelled as such in the menu:
-PPP negotiates fully and then carries no traffic, because DCC binds to the
-sync stack rather than TCP/IP.
+| Device | How it connects |
+|---|---|
+| Series 5mx / 7 / netBook / Revo | serial cable, PPP direct link, 115200 |
+| netBook Pro (CE, dial-up) | serial cable, dial-up to an emulated modem, 19200 |
+| netBook Pro (CE, network) | its own network card; no link to bring up |
+| netBook Pro (PsionLX, network) | its own network card; adds Spotify |
+
+The **Psion netBook Pro** runs Windows CE 4.2 .NET rather than EPOC. Over the
+serial cable it connects as **dial-up to an emulated modem** at 19200 baud
+rather than as a direct link, so it has its own peer profile. Its Direct
+Connection mode was tried and removed: PPP negotiates fully and then carries
+no traffic, because DCC binds to the sync stack rather than TCP/IP.
+
+On a network the netBook Pro needs no link at all, whether it runs Windows CE
+or **PsionLX**, Psion's Linux. See [Network mode](#network-mode).
 
 Everything else here is **EPOC Release 5**: the **Series 5mx**, **Series 7**,
 **netBook** and **Revo**/Revo Plus. ER5 ships the same TCP/IP and PPP stack
@@ -47,7 +57,8 @@ Or run the GUI straight from source with `python3 app/gui.py`.
 ### How the bundle works
 
 Built with PyInstaller, which bundles the interpreter, the stdlib, Tk and
-every dependency. **57 MB, and it runs on a Mac with no Python installed.**
+every dependency, and librespot for Spotify. **76 MB, and it runs on a Mac
+with no Python installed.**
 verified by launching it in a stripped environment with nothing but
 `/usr/bin:/bin` on `PATH`.
 
@@ -80,9 +91,15 @@ rather than by extension.
 The app installs its own PPP configuration, including the peer files for both
 device families and the fake modem responder the netBook Pro dials. The first
 time you press **Connect**, it asks whether to write `/etc/ppp/peers/psion`,
-`/etc/ppp/ip-up`, `/etc/ppp/ip-down` and `/etc/pf.anchors/psion.nat`, then
-authenticates once. `bin/preflight.sh` and `bin/install.sh` are still there
-for terminal use, but nothing requires them.
+`/etc/ppp/peers/psion-ce-modem`, `/etc/ppp/fakemodem.py`, `/etc/ppp/ip-up`,
+`/etc/ppp/ip-down` and `/etc/pf.anchors/psion.nat`, then authenticates once.
+It also removes the files an earlier version installed for the Direct
+Connection mode, if they are PsionNet's. `bin/preflight.sh` and
+`bin/install.sh` are still there for terminal use, but nothing requires them.
+
+The fake modem runs under `/usr/bin/python3`, which macOS provides once the
+Command Line Tools are installed (`xcode-select --install`). It logs to
+`/var/log/psionnet-fakemodem.log`.
 
 ## What it does
 
@@ -94,6 +111,44 @@ for terminal use, but nothing requires them.
 - **Web proxy**: starts and stops the proxy, shows its address, requests
   served, errors and in-flight count. Detail level and images are switchable.
 - **Logs**: the pppd log and the proxy's own output, in tabs.
+- **Spotify** (PsionLX, network only): one line saying how the *netBook Pro*
+  speaker is doing; click it to unfold your Spotify developer Client ID and
+  the Log in / Log out button. It remembers whether you left it open.
+
+## Network mode
+
+For a netBook Pro on the network there is no serial port and no PPP. The
+**Listen on** row offers each of the Mac's private IPv4 addresses (VPN, PPP and
+bridge interfaces are left out), and the proxy is started on the one chosen,
+port 8080, with that interface's subnet as the only network allowed to use it
+besides the Mac itself. Anything else gets a 403.
+
+The proxy also answers a UDP broadcast, `PSIONNET?` on port 8899, with
+`PSIONNET <address> <port>`, which is how PsionLX's Spotify app, "Find new
+software" and its login helper find it without being told an address. It
+answers only the same subnet.
+
+For *netBook Pro (PsionLX, network)* the proxy is also started with
+`--software`, and the status line shows the one command that sets a PsionLX
+card up: `wget -O - http://<address>:8080/lx/install | sh`, as root.
+
+## Spotify
+
+The Spotify box appears for *netBook Pro (PsionLX, network)* only.
+
+**Log in** runs Spotify's PKCE sign-in in your browser, against your own
+Client ID, with a redirect to `http://127.0.0.1:8897/callback` that a small
+server in the app catches. No client secret is involved. The token is saved to
+`~/Library/Application Support/PsionNet/spotify-token.json`, mode 0600, and
+refreshed as it expires. **Log out** deletes it and librespot's cached
+credentials.
+
+When the proxy starts in this mode it is started with `--spotify`, which
+brings up librespot (bundled in the app) as the *netBook Pro* speaker. The
+speaker signs in separately, once: librespot opens Spotify's page in the
+browser, because Spotify will not accept the Client ID login for a speaker. The
+proxy writes its state to `spotify-status.json` in the same folder every few
+seconds, and the box shows it.
 
 ## Privilege
 

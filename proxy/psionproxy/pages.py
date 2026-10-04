@@ -70,7 +70,7 @@ color:#5a6570;font-size:11px}
 
 def _ce_head(profile) -> str:
     """The CE stylesheet, or nothing for a client with no cascade."""
-    return f"<style>{_CE_STYLE}</style>" if profile and profile.key == "ce" else ""
+    return f"<style>{_CE_STYLE}</style>" if profile and profile.keep_css else ""
 
 
 def home(profile=None) -> str:
@@ -84,7 +84,7 @@ def home(profile=None) -> str:
     from . import profiles
     profile = profile or profiles.DEFAULT
 
-    if profile.key != "ce":
+    if not profile.keep_css:
         rows = "\n".join(
             f'<li><a href="{plain(url)}">{psionise(name)}</a> <font size="1">{psionise(note)}</font></li>'
             for url, name, note in LINKS)
@@ -110,13 +110,33 @@ def home(profile=None) -> str:
         f'<tr><td class="name"><a href="{plain(url)}">{name}</a></td>'
         f'<td class="note">{note}</td></tr>'
         for url, name, note in LINKS)
+    if profile.key == "lx":
+        sub = "Psion netBook Pro &middot; PsionLX &middot; Firefox 1.0"
+        browser = "Firefox"
+        dev = ("You are being served the <b>PsionLX profile</b>. Pages keep "
+               "their stylesheets, their UTF-8 text and their HTML 4.01 "
+               "structure. Stylesheets are filtered down to what Firefox 1.0 "
+               "can use, so a page arrives styled rather than carrying rules "
+               "this Gecko has never heard of.")
+        link = "connected over your network"
+    else:
+        sub = ("Psion netBook Pro &middot; Windows CE &middot; "
+               "Pocket Internet Explorer")
+        browser = "Internet Explorer"
+        dev = ("You are being served the <b>Windows CE profile</b>. Pages "
+               "keep their stylesheets, their UTF-8 text and their real "
+               "HTML 4.01 structure, rather than being flattened to the HTML "
+               "3.2 the EPOC machines need. Stylesheets are filtered down to "
+               "the subset this browser implements, so a page arrives styled "
+               "instead of arriving slowly and then ignoring most of what it "
+               "carried.")
+        link = "link runs at 19200 baud, about 1.9 KB/s"
     body = (
         '<table width="100%"><tr>'
         '<td width="56"><img src="http://psion/icon/psionnet_48.gif" '
         'width="48" height="48" alt="PsionNet"></td>'
         '<td><h1>PsionNet</h1>'
-        '<p class="sub">Psion netBook Pro &middot; Windows CE &middot; '
-        'Pocket Internet Explorer</p></td></tr></table>'
+        f'<p class="sub">{sub}</p></td></tr></table>'
         '<div class="bar">'
         '<form action="http://psion/search" method="get">'
         'Search the web: <input type="text" name="q" class="q"> '
@@ -125,19 +145,14 @@ def home(profile=None) -> str:
         '<h2>Light pages that load quickly</h2>'
         f'<table class="links">{rows}</table>'
         '<h2>What this device gets</h2>'
-        '<p class="dev">You are being served the <b>Windows CE profile</b>. '
-        'Pages keep their stylesheets, their UTF-8 text and their real '
-        'HTML 4.01 structure, rather than being flattened to the HTML 3.2 '
-        'the EPOC machines need. Stylesheets are filtered down to the subset '
-        'this browser implements, so a page arrives styled instead of arriving '
-        'slowly and then ignoring most of what it carried.</p>'
-        '<p>Type any address into Internet Explorer as normal. The proxy does '
+        f'<p class="dev">{dev}</p>'
+        f'<p>Type any address into {browser} as normal. The proxy does '
         'the TLS upstream and hands back plain HTTP, so <tt>https</tt> sites '
         'work without this machine ever negotiating a modern cipher.</p>'
         '<div class="foot">'
         '<a href="http://psion/probe">Capability probe</a> &middot; '
         '<a href="http://psion/bench/25/prose">Render benchmark</a> &middot; '
-        'link runs at 19200 baud, about 1.9 KB/s'
+        f'{link}'
         '</div>')
     return render("PsionNet", body, extra_head=_ce_head(profile), profile=profile)
 
@@ -146,7 +161,7 @@ def search_results(query: str, results: list, backend: str,
                    profile=None) -> str:
     from . import profiles
     profile = profile or profiles.DEFAULT
-    ce = profile.key == "ce"
+    ce = profile.keep_css
     shown = query if ce else psionise(query)
 
     if not results:
@@ -320,7 +335,7 @@ def google_substitute(query: str = "", profile=None) -> str:
 
 def _short_name(profile) -> str:
     """A device name that fits in a heading."""
-    return "netBook Pro" if profile.key == "ce" else "Series 7"
+    return "netBook Pro" if profile.key in ("ce", "lx") else "Series 7"
 
 
 def capability_probe() -> str:

@@ -31,6 +31,10 @@ def main() -> None:
         config.BIND_PORT = int(opt("--port", config.BIND_PORT))
         config.FIDELITY = opt("--fidelity", config.FIDELITY)
         config.IMAGES_DEFAULT_ON = "--no-images" not in args
+        config.apply_network_args(opt("--allow", ""),
+                                  "--spotify" in args or "--spotify-demo" in args,
+                                  "--spotify-demo" in args)
+        config.apply_software_args("--software" in args, opt("--software-src", ""))
         if config.FIDELITY == "full":
             config.BUDGET_HTML_HARD = 110_000
         from psionproxy.app import main as proxy_main

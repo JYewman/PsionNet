@@ -246,8 +246,56 @@ def dns_hijacked_by_vpn(servers=("1.1.1.1", "9.9.9.9")) -> str:
     return ""
 
 
-def ppp_config_installed() -> bool:
-    return os.path.exists("/etc/ppp/peers/psion")
+def ppp_config_installed(kind: str = "epoc") -> bool:
+    """Is everything this device type's link needs in /etc?
+
+    Checked per device: an install from before the netBook Pro's modem
+    responder was packaged has peers/psion but no /etc/ppp/fakemodem.py, and
+    must be offered the install again rather than fail at dial time.
+    """
+    need = ["/etc/ppp/peers/psion"]
+    if kind == "ce":
+        need += ["/etc/ppp/peers/psion-ce-modem", "/etc/ppp/fakemodem.py"]
+    return all(os.path.exists(p) for p in need)
+
+
+@dataclass
+class Iface:
+    name: str          # en0
+    ip: str            # 192.168.1.4
+    network: str       # 192.168.1.0/24
+
+    @property
+    def label(self) -> str:
+        return f"{self.name}  {self.ip}  ({self.network})"
+
+
+def lan_interfaces() -> list[Iface]:
+    """IPv4 interfaces on a private network: candidates for network mode.
+
+    Loopback, link-local, the PPP link and anything on a public address are
+    left out -- the proxy must never be offered to the internet at large.
+    """
+    import ipaddress
+    out = _run(["/sbin/ifconfig"])
+    found, name = [], ""
+    for line in out.splitlines():
+        if line and not line[0].isspace():
+            name = line.split(":", 1)[0]
+            continue
+        bits = line.split()
+        if len(bits) >= 4 and bits[0] == "inet" and bits[2] == "netmask":
+            try:
+                ip = ipaddress.ip_address(bits[1])
+                mask = int(bits[3], 16)
+                prefix = bin(mask).count("1")
+                net = ipaddress.ip_network(f"{ip}/{prefix}", strict=False)
+            except ValueError:
+                continue
+            if (ip.is_private and not ip.is_loopback and not ip.is_link_local
+                    and not name.startswith(("ppp", "utun", "lo", "bridge"))):
+                found.append(Iface(name, str(ip), str(net)))
+    return found
 
 
 # --- proxy ------------------------------------------------------------------

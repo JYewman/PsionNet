@@ -137,11 +137,25 @@ def ppp_install() -> tuple[bool, str]:
 # The peer file to use per device family. They are genuinely different links,
 # not a setting: EPOC speaks PPP the moment the port opens, while Windows CE
 # drives the line as a Hayes modem at 19200 and must be answered as one.
+#
+# Windows CE's "Direct Connection" is deliberately absent. It negotiates PPP
+# completely and then carries no traffic, because it binds the link to the
+# desktop sync stack rather than TCP/IP; see app/README.md.
 PROFILES = {
     "epoc": ("psion", "Psion Series 5mx / 7 / netBook / Revo (EPOC)"),
     "ce": ("psion-ce-modem", "Psion netBook Pro (Windows CE, dial-up)"),
-    "ce-direct": ("psion-ce", "Psion netBook Pro (Windows CE, direct)"),
 }
+
+# Devices that join the LAN themselves (a netBook Pro with a network card)
+# need no PPP link at all, only the proxy on the Mac's LAN address.
+NETWORK_TYPES = {
+    "ce-lan": "Psion netBook Pro (Windows CE, network)",
+    "lx-lan": "Psion netBook Pro (PsionLX, network)",
+}
+
+
+def is_network(kind: str) -> bool:
+    return kind in NETWORK_TYPES
 
 
 def ppp_start(device: str, profile: str = "epoc") -> tuple[bool, str]:
@@ -200,7 +214,8 @@ def pppd_running() -> bool:
 
 # --- the proxy (no privilege needed) ---------------------------------------
 
-def proxy_argv(host: str, port: int, fidelity: str, images: bool) -> list[str]:
+def proxy_argv(host: str, port: int, fidelity: str, images: bool,
+               allow: str = "", spotify: bool = False, software: bool = False) -> list[str]:
     """How to launch the proxy.
 
     Frozen, there is no separate interpreter to call, so the app re-launches
@@ -216,6 +231,12 @@ def proxy_argv(host: str, port: int, fidelity: str, images: bool) -> list[str]:
                 "--host", host, "--port", str(port), "--fidelity", fidelity]
     if not images:
         argv.append("--no-images")
+    if allow:
+        argv += ["--allow", allow]
+    if spotify:
+        argv.append("--spotify")
+    if software:
+        argv.append("--software")
     return argv
 
 
